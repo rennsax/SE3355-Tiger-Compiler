@@ -55,12 +55,15 @@ private:
 class Exp {
 public:
   virtual int MaxArgs() const = 0;
+  virtual IntAndTable *Interp(Table *) const = 0;
 };
 
 class IdExp : public Exp {
 public:
   explicit IdExp(std::string id) : id(std::move(id)) {}
   int MaxArgs() const override;
+  IntAndTable *Interp(Table *) const override;
+
 private:
   std::string id;
 };
@@ -69,6 +72,7 @@ class NumExp : public Exp {
 public:
   explicit NumExp(int num) : num(num) {}
   int MaxArgs() const override;
+  IntAndTable *Interp(Table *) const override;
 
 private:
   int num;
@@ -79,6 +83,7 @@ public:
   OpExp(Exp *left, BinOp oper, Exp *right)
       : left(left), oper(oper), right(right) {}
   int MaxArgs() const override;
+  IntAndTable *Interp(Table *) const override;
 
 private:
   Exp *left;
@@ -94,6 +99,7 @@ class EseqExp : public Exp {
 public:
   EseqExp(Stm *stm, Exp *exp) : stm(stm), exp(exp) {}
   int MaxArgs() const override;
+  IntAndTable *Interp(Table *) const override;
 
 private:
   Stm *stm;
@@ -102,12 +108,13 @@ private:
 
 /**
  * @brief Expression List Interface
- *
+ * @attention ExpList is only used in PrintStm
  */
 class ExpList {
 public:
   virtual int get_exp_number() const = 0;
   virtual int MaxArgs() const = 0;
+  virtual Table *InterpByPrintStm(Table *) const = 0;
 };
 
 class PairExpList : public ExpList {
@@ -115,17 +122,23 @@ public:
   PairExpList(Exp *exp, ExpList *tail) : exp(exp), tail(tail) {}
   int get_exp_number() const override;
   int MaxArgs() const override;
+  Table *InterpByPrintStm(Table *) const override;
+
 private:
   Exp *exp;
   ExpList *tail;
 };
 
 class LastExpList : public ExpList {
+  friend Table *Stm::Interp(Table *) const;
+
 public:
   LastExpList(Exp *exp) : exp(exp) {}
   int get_exp_number() const override;
   int MaxArgs() const override;
+
 private:
+  Table *InterpByPrintStm(Table *) const override;
   Exp *exp;
 };
 

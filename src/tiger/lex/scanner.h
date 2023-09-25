@@ -10,6 +10,13 @@
 #include "tiger/errormsg/errormsg.h"
 #include "tiger/parse/parserbase.h"
 
+#define _LEXER_ERROR(message) \
+  errormsg_->Error(errormsg_->tok_pos_, message);\
+  exit(1)
+#define _COM_LVL_DEC() --comment_level_
+#define _COM_LVL_INC() ++comment_level_
+#define _COM_LVL_GET() comment_level_
+
 class Scanner : public ScannerBase {
 public:
   Scanner() = delete;
@@ -48,6 +55,7 @@ public:
 private:
   int comment_level_;
   std::string string_buf_;
+  int string_buf_act_len_{};
   int char_pos_;
   std::unique_ptr<err::ErrorMsg> errormsg_;
 

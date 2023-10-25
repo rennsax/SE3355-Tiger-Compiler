@@ -14,6 +14,11 @@ class Ty {
 public:
   virtual Ty *ActualTy();
   virtual bool IsSameType(Ty *);
+  static bool IsSameType(Ty *l, Ty *r) {
+    // commutative
+    assert(l->IsSameType(r) == r->IsSameType(l));
+    return l->IsSameType(r);
+  }
 
 protected:
   Ty() = default;

@@ -91,6 +91,15 @@ public:
   virtual tr::ExpAndTy *Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                   tr::Level *level, temp::Label *label,
                                   err::ErrorMsg *errormsg) const = 0;
+  /**
+   * @brief Escape analysis, for Lab5 Part1.
+   *
+   * The virtual function isn't marked as `const`, since the procedure of
+   * calculating escape may modify the `escape_` field.
+   *
+   * @param env escape env used in processing expressions
+   * @param depth current block depth (the depth of the root block is 0)
+   */
   virtual void Traverse(esc::EscEnvPtr env, int depth) = 0;
 
 protected:
@@ -112,6 +121,10 @@ public:
   void Traverse(esc::EscEnvPtr env, int depth) override;
 };
 
+/**
+ * @brief A field of a record lvalue.
+ *
+ */
 class FieldVar : public Var {
 public:
   Var *var_;
@@ -130,6 +143,11 @@ public:
   void Traverse(esc::EscEnvPtr env, int depth) override;
 };
 
+/**
+ * @brief A position (specified by the subscript in `[]`) of an array.
+ * Like `a[4]`.
+ *
+ */
 class SubscriptVar : public Var {
 public:
   Var *var_;
@@ -163,12 +181,19 @@ public:
   virtual tr::ExpAndTy *Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                   tr::Level *level, temp::Label *label,
                                   err::ErrorMsg *errormsg) const = 0;
+  /**
+   * @see Var::Traverse
+   */
   virtual void Traverse(esc::EscEnvPtr env, int depth) = 0;
 
 protected:
   explicit Exp(int pos) : pos_(pos) {}
 };
 
+/**
+ * @brief A lvalue.
+ *
+ */
 class VarExp : public Exp {
 public:
   Var *var_;
@@ -231,6 +256,10 @@ public:
   void Traverse(esc::EscEnvPtr env, int depth) override;
 };
 
+/**
+ * @brief A function call.
+ *
+ */
 class CallExp : public Exp {
 public:
   sym::Symbol *func_;
@@ -303,6 +332,10 @@ public:
   void Traverse(esc::EscEnvPtr env, int depth) override;
 };
 
+/**
+ * @brief lvalue = exp
+ *
+ */
 class AssignExp : public Exp {
 public:
   Var *var_;
@@ -354,10 +387,15 @@ public:
   void Traverse(esc::EscEnvPtr env, int depth) override;
 };
 
+/**
+ * @brief for id := exp1 to exp2 do exp3
+ *
+ */
 class ForExp : public Exp {
 public:
   sym::Symbol *var_;
   Exp *lo_, *hi_, *body_;
+  // The index of For expression is always escaped (in register)
   bool escape_;
 
   ForExp(int pos, sym::Symbol *var, Exp *lo, Exp *hi, Exp *body)
@@ -405,6 +443,10 @@ public:
   void Traverse(esc::EscEnvPtr env, int depth) override;
 };
 
+/**
+ * @brief ID [ exp ] of ARRAY_T, e.g. arr[10] of int.
+ *
+ */
 class ArrayExp : public Exp {
 public:
   sym::Symbol *typ_;
@@ -451,6 +493,9 @@ public:
   virtual tr::Exp *Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                              tr::Level *level, temp::Label *label,
                              err::ErrorMsg *errormsg) const = 0;
+  /**
+   * @see Var::Traverse
+   */
   virtual void Traverse(esc::EscEnvPtr env, int depth) = 0;
 
 protected:

@@ -11,11 +11,11 @@
 
 namespace sem {
 
-//lab4 only
+// lab4 only
 class ProgSem {
 public:
   ProgSem(std::unique_ptr<absyn::AbsynTree> absyn_tree,
-         std::unique_ptr<err::ErrorMsg> errormsg)
+          std::unique_ptr<err::ErrorMsg> errormsg)
       : absyn_tree_(std::move(absyn_tree)), errormsg_(std::move(errormsg)),
         tenv_(std::make_unique<env::TEnv>()),
         venv_(std::make_unique<env::VEnv>()) {}
@@ -44,7 +44,7 @@ public:
 private:
   std::unique_ptr<absyn::AbsynTree> absyn_tree_;
   std::unique_ptr<err::ErrorMsg> errormsg_;
-  
+
   std::unique_ptr<env::TEnv> tenv_;
   std::unique_ptr<env::VEnv> venv_;
 

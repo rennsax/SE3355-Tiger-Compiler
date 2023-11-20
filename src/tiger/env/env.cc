@@ -1,6 +1,6 @@
 #include "tiger/env/env.h"
-#include "tiger/translate/translate.h"
 #include "tiger/semant/semant.h"
+#include "tiger/translate/translate.h"
 
 namespace sem {
 void ProgSem::FillBaseTEnv() {
@@ -17,9 +17,8 @@ void ProgSem::FillBaseVEnv() {
 
   formals = new type::TyList(type::IntTy::Instance());
 
-  venv_->Enter(
-      sym::Symbol::UniqueSymbol("exit"),
-      new env::FunEntry(formals, type::VoidTy::Instance()));
+  venv_->Enter(sym::Symbol::UniqueSymbol("exit"),
+               new env::FunEntry(formals, type::VoidTy::Instance()));
 
   result = type::StringTy::Instance();
 
@@ -31,9 +30,8 @@ void ProgSem::FillBaseVEnv() {
 
   formals = new type::TyList(type::StringTy::Instance());
 
-  venv_->Enter(
-      sym::Symbol::UniqueSymbol("print"),
-      new env::FunEntry(formals, type::VoidTy::Instance()));
+  venv_->Enter(sym::Symbol::UniqueSymbol("print"),
+               new env::FunEntry(formals, type::VoidTy::Instance()));
   venv_->Enter(sym::Symbol::UniqueSymbol("printi"),
                new env::FunEntry(new type::TyList(type::IntTy::Instance()),
                                  type::VoidTy::Instance()));
@@ -56,7 +54,6 @@ void ProgSem::FillBaseVEnv() {
                         type::IntTy::Instance()});
   venv_->Enter(sym::Symbol::UniqueSymbol("substring"),
                new env::FunEntry(formals, result));
-
 }
 
 } // namespace sem
@@ -121,7 +118,6 @@ void ProgTr::FillBaseVEnv() {
                         type::IntTy::Instance()});
   venv_->Enter(sym::Symbol::UniqueSymbol("substring"),
                new env::FunEntry(level, label, formals, result));
-
 }
 
 } // namespace tr

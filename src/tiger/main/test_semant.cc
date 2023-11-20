@@ -27,7 +27,8 @@ int main(int argc, char **argv) {
   }
 
   {
-    sem::ProgSem program_Semanalyzer(std::move(absyn_tree), std::move(errormsg));
+    sem::ProgSem program_Semanalyzer(std::move(absyn_tree),
+                                     std::move(errormsg));
     program_Semanalyzer.SemAnalyze();
   }
   return 0;

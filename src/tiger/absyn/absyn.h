@@ -56,7 +56,7 @@ enum Oper {
 class AbsynTree {
 public:
   AbsynTree() = delete;
-  AbsynTree(nullptr_t) = delete;
+  AbsynTree(std::nullptr_t) = delete;
   explicit AbsynTree(absyn::Exp *root);
   AbsynTree(const AbsynTree &absyn_tree) = delete;
   AbsynTree(AbsynTree &&absyn_tree) = delete;

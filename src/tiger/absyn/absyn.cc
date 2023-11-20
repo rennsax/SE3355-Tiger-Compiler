@@ -115,6 +115,11 @@ TypeDec::~TypeDec() { delete types_; }
 
 NameTy::~NameTy() { delete name_; }
 
+RecordTy::RecordTy(int pos, FieldList *record) : Ty(pos), record_(record) {
+  for (auto field : record_->GetList()) {
+    field->escape_ = true;
+  }
+}
 RecordTy::~RecordTy() { delete record_; }
 
 ArrayTy::~ArrayTy() { delete array_; }

@@ -591,7 +591,7 @@ class RecordTy : public Ty {
 public:
   FieldList *record_;
 
-  RecordTy(int pos, FieldList *record) : Ty(pos), record_(record) {}
+  RecordTy(int pos, FieldList *record);
   ~RecordTy() override;
 
   void Print(FILE *out, int d) const override;

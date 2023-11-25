@@ -11,7 +11,18 @@ using Label = sym::Symbol;
 
 class LabelFactory {
 public:
+  /**
+   * @brief Returns a new label from an infinite set of labels.
+   *
+   */
   static Label *NewLabel();
+  /**
+   * @brief Returns a new label whose assembly-language name is string.
+   *
+   * @param name it's OK to use the symbol name (e.g. the function name) to make
+   * your debug life easier. However, there may be different functions with the
+   * identical name in different scopes. (P142)
+   */
   static Label *NamedLabel(std::string_view name);
   static std::string LabelString(Label *s);
 
@@ -33,6 +44,11 @@ private:
 
 class TempFactory {
 public:
+  /**
+   * @brief Returns a new temporary from an infinite set of temps.
+   *
+   * We've assumed that the registers are infinite.
+   */
   static Temp *NewTemp();
 
 private:

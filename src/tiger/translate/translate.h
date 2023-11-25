@@ -43,6 +43,12 @@ private:
   std::list<temp::Label **> patch_list_;
 };
 
+/**
+ * @brief new version of Access, used in translation phase.
+ *
+ * Compared with frame::Access:
+ * tr::Access is an abstract data type. It must know about static link.
+ */
 class Access {
 public:
   Level *level_;
@@ -50,20 +56,85 @@ public:
 
   Access(Level *level, frame::Access *access)
       : level_(level), access_(access) {}
-  static Access *AllocLocal(Level *level, bool escape);
 };
 
+/**
+ * @brief The nesting level
+ *
+ */
 class Level {
 public:
+  /* TODO: Put your lab5 code here */
+  /**
+   * @brief Create a nesting level.
+   *
+   * Aside: managing **static link** (P144)
+   * The management of static link is passing a extra parameter "static link" to
+   * the nesting function / frame / level. The param "static link" is just a
+   * pointer to the linked frame.
+   * Static link should be stored in the frame, at the part of "incoming
+   * arguments":
+   * ------------ incoming arguments
+   * argument n
+   * argument n-1
+   * ...
+   * argument 1
+   * static link
+   * ------------
+   * We implement static link by passing an extra parameter that is always
+   * escaped. For instance, if we have a function g, whose corresponded level is
+   * level_g (tr::Level), and function f(x, y) is nested inside g. We can call
+   *              level_g.newLevel(f, {false, false});
+   * to create the abstract level level_f (tr::Level) of function f, whose two
+   * actual parameters are both not escaped. Meanwhile, the procedure above
+   * (tr::Level::newLevel(label, fmls)) may call:
+   *              frame::newFrame(label, {true, fmls});
+   * which returns a frame::Frame containing three frame-offset values - the
+   * static link offset and the offset of x and y.
+   *
+   * @param this the parent level
+   * @param name
+   * @param formals whether the formals are escaped
+   */
+  [[nodiscard]] Level *newLevel(temp::Label *name,
+                                const std::list<bool> &formals) const;
+
+  /**
+   * @brief Get the actual formals of the function.
+   *
+   * It will get offsets in the frame (frame::Frame), strip the static link one,
+   * and suitably converted into Access values.
+   */
+  [[nodiscard]] const std::list<Access> &formals() const;
+
+  /**
+   * @brief Create a local variable in the level.
+   *
+   * When Semant processes a local variable declaration at level lev, it calls
+   * lev->allocLocal(esc) to create the variable in this level. (P143)
+   *
+   * @param escape whether the variable is escaped
+   * @return Access*
+   */
+  [[nodiscard]] Access *allocLocal(bool escape) const;
+
+  static Level *outerMost() { return Level::outer_most_; }
+
+private:
   frame::Frame *frame_;
   Level *parent_;
 
-  /* TODO: Put your lab5 code here */
+  // It is the level within which that program is nested.
+  // All library functions are declared at this level.
+  static Level *outer_most_;
 };
 
 class ProgTr {
 public:
   // TODO: Put your lab5 code here */
+  ProgTr(std::unique_ptr<absyn::AbsynTree> ast,
+         std::unique_ptr<err::ErrorMsg> error)
+      : absyn_tree_{std::move(ast)}, errormsg_{std::move(error)} {}
 
   /**
    * Translate IR tree

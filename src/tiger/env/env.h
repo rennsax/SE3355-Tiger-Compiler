@@ -22,6 +22,12 @@ public:
 
 class VarEntry : public EnvEntry {
 public:
+  /**
+   * @brief tr::Access consists of the level (tr::Level) and the actual access
+   * (frame::Access).
+   *
+   * This field is recorded only for the translation phase.
+   */
   tr::Access *access_;
   type::Ty *ty_;
 
@@ -30,6 +36,7 @@ public:
       : EnvEntry(readonly), ty_(ty), access_(nullptr){};
 
   // For lab5(translate IR tree)
+  // Book P143
   VarEntry(tr::Access *access, type::Ty *ty, bool readonly = false)
       : EnvEntry(readonly), ty_(ty), access_(access){};
 };
@@ -46,6 +53,7 @@ public:
       : formals_(formals), result_(result), level_(nullptr), label_(nullptr) {}
 
   // For lab5(translate IR tree)
+  // Book P143
   FunEntry(tr::Level *level, temp::Label *label, type::TyList *formals,
            type::Ty *result)
       : formals_(formals), result_(result), level_(level), label_(label) {}

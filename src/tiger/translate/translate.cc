@@ -13,10 +13,6 @@ extern frame::RegManager *reg_manager;
 
 namespace tr {
 
-Access *Access::AllocLocal(Level *level, bool escape) {
-  /* TODO: Put your lab5 code here */
-}
-
 class Cx {
 public:
   PatchList trues_;
@@ -96,8 +92,13 @@ public:
 
 void ProgTr::Translate() { /* TODO: Put your lab5 code here */ }
 
+Access *Level::allocLocal(bool escape) const {
+  // TODO
+}
+
 } // namespace tr
 
+// Translation is done in the semantic analysis phase of Tiger compiler.
 namespace absyn {
 
 tr::ExpAndTy *AbsynTree::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,

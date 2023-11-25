@@ -88,6 +88,21 @@ public:
   virtual type::Ty *SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
                                int labelcount,
                                err::ErrorMsg *errormsg) const = 0;
+  /**
+   * @brief Translate, for Lab5 Part2.
+   *
+   * @param venv the value environment.
+   * The entry (env::VEnvPtr) may be:
+   *      1. env::VarEntry{tr::Access, type::Ty}.
+   *      2. env::FunEntry{tr::Level, temp::Label, type::TyList fmls, type::Ty
+   *         result}
+   * @param tenv the type environment.
+   * The entry type is type::Ty.
+   * @param level the current level
+   * @param label
+   * @param errormsg
+   * @return tr::ExpAndTy*
+   */
   virtual tr::ExpAndTy *Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                   tr::Level *level, temp::Label *label,
                                   err::ErrorMsg *errormsg) const = 0;

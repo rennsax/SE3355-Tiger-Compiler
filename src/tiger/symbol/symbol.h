@@ -31,9 +31,10 @@ private:
   Symbol *next_;
 };
 
-template <typename ValueType>
-class Table : public tab::Table<Symbol, ValueType> {
+template <typename _ValueType>
+class Table : public tab::Table<Symbol, _ValueType> {
 public:
+  using ValueType = _ValueType;
   Table() : tab::Table<Symbol, ValueType>() {}
   void BeginScope();
   void EndScope();

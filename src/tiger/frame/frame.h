@@ -71,12 +71,34 @@ protected:
 class Access {
 public:
   /* TODO: Put your lab5 code here */
-
+  /**
+   * @brief An interface to get the tree expression.
+   *
+   * @param framePtr current frame of the access.
+   * @return tree::Exp* mid IR expression
+   */
+  [[nodiscard]] virtual tree::Exp *toExp(tree::Exp *framePtr) const = 0;
   virtual ~Access() = default;
 };
 
 class Frame {
   /* TODO: Put your lab5 code here */
+public:
+  /**
+   * @brief allocate a local variable (access) for the frame.
+   *
+   * As each variable declaration is encountered in processing the Tiger
+   * program, allocLocal will be called to allocate a temporary or new space in
+   * the frame, associated with the name v. (P139)
+   *
+   * @param escape if false, the access is in register, otherwise it's in the
+   * frame memory.
+   * @return frame::Access*
+   */
+  [[nodiscard]] virtual frame::Access *allocateLocal(bool escape) const = 0;
+
+private:
+  std::list<frame::Access *> formals_;
 };
 
 /**
@@ -132,6 +154,17 @@ private:
 };
 
 /* TODO: Put your lab5 code here */
+
+/**
+ * @brief Factory to make a new frame for a function f with formal parameters.
+ *
+ * "View shift" should be considered.
+ *
+ * @param f the symbol of the function
+ * @param formals whether the formals are escaped
+ * @return Frame
+ */
+[[nodiscard]] Frame *newFrame(temp::Label *f, const std::list<bool> &formals);
 
 } // namespace frame
 

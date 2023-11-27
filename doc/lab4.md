@@ -1,4 +1,4 @@
-- [ ] Named Type
+- [x] Named Type
 
 - [x] Re-declaration
 
@@ -24,6 +24,19 @@ The field `sym_` is so-called an **alias** of the type `ty_`. But is `ty_` the u
   a -> b -> c -> int
   ```
 what will the `NameTy` of `a` be like? `NameTy{"a", NameTy{"b", ...}}` or just `NameTy{"a", type::IntTy::Instance}`?
+
+**Answer**: the definition of `ActualTy` interface has handled the problem of "chain type":
+
+```cpp
+Ty *Ty::ActualTy() { return this; }
+
+Ty *NameTy::ActualTy() {
+  assert(ty_ != this);
+  return ty_->ActualTy();
+}
+```
+
+Except for `NameTy`, the method `ActualTy` of each derived type of `Ty` just returns the inner type itself. When it comes to `NameTy`, it tracked the "actual type" of its member `ty_` recursively, until one of the descendants isn't `NameTy`.
 
 ### Re-declaration
 

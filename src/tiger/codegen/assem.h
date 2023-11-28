@@ -33,6 +33,8 @@ public:
    * the name) of every temp.
    */
   virtual void Print(FILE *out, temp::Map *m) const = 0;
+  [[nodiscard]] virtual temp::TempList *Def() const = 0;
+  [[nodiscard]] virtual temp::TempList *Use() const = 0;
 };
 
 class OperInstr : public Instr {
@@ -59,6 +61,8 @@ public:
       : assem_(std::move(assem)), dst_(dst), src_(src), jumps_(jumps) {}
 
   void Print(FILE *out, temp::Map *m) const override;
+  [[nodiscard]] temp::TempList *Def() const override;
+  [[nodiscard]] temp::TempList *Use() const override;
 };
 
 /**
@@ -76,6 +80,8 @@ public:
       : assem_(std::move(assem)), label_(label) {}
 
   void Print(FILE *out, temp::Map *m) const override;
+  [[nodiscard]] temp::TempList *Def() const override;
+  [[nodiscard]] temp::TempList *Use() const override;
 };
 
 /**
@@ -95,6 +101,8 @@ public:
       : assem_(std::move(assem)), dst_(dst), src_(src) {}
 
   void Print(FILE *out, temp::Map *m) const override;
+  [[nodiscard]] temp::TempList *Def() const override;
+  [[nodiscard]] temp::TempList *Use() const override;
 };
 
 class InstrList {

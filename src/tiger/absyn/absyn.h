@@ -98,8 +98,9 @@ public:
    *         result}
    * @param tenv the type environment.
    * The entry type is type::Ty.
-   * @param level the current level
-   * @param label
+   * @param level the current level. All translates needs to pass the variable
+   * down, because FunDec::translate needs to call tr::Level::newLevel.
+   * @param label passed done for translating break expression
    * @param errormsg
    * @return tr::ExpAndTy*
    */

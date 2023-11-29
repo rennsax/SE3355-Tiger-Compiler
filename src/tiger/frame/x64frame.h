@@ -18,10 +18,14 @@ public:
   [[nodiscard]] temp::TempList *CallerSaves() override;
   [[nodiscard]] temp::TempList *CalleeSaves() override;
   [[nodiscard]] temp::TempList *ReturnSink() override;
-  [[nodiscard]] int WordSize() override;
+  [[nodiscard]] int WordSize() const override { return wordSize_; }
   [[nodiscard]] temp::Temp *FramePointer() override;
   [[nodiscard]] temp::Temp *StackPointer() override;
   [[nodiscard]] temp::Temp *ReturnValue() override;
+
+private:
+  // x86-64: 64-bit word size, 8 bytes
+  constexpr static int wordSize_ = 8;
 };
 
 class X64Frame : public Frame {

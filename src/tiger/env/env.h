@@ -7,7 +7,7 @@
 
 // Forward Declarations
 namespace tr {
-class Access;
+struct Access;
 class Level;
 } // namespace tr
 

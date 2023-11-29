@@ -4,6 +4,7 @@
 #include <list>
 #include <memory>
 #include <string>
+#include <string_view>
 
 #include "tiger/codegen/assem.h"
 #include "tiger/frame/temp.h"
@@ -11,11 +12,38 @@
 
 namespace frame {
 
+/**
+ * @brief Handle external calls. For example, call `malloc` implemented by C.
+ *
+ * (P168) The differences of calling conventions or operating systems causes
+ * target-machine-specific details that need to be handled when calling an
+ * external function.
+ * May have to be adjusted for static links, or underscores in labels, etc.
+ *
+ * @param callee_label
+ * @param args
+ * @return tree::Exp*
+ */
+tree::Exp *externalCall(std::string_view callee_label, tree::ExpList args);
+
 class RegManager {
 public:
   RegManager() : temp_map_(temp::Map::Empty()) {}
 
-  temp::Temp *GetRegister(int regno) { return regs_[regno]; }
+  /**
+   * @brief Get the reg_idx-th register.
+   *
+   * @param reg_idx
+   * @return temp::Temp*
+   */
+  temp::Temp *GetRegister(int reg_idx) const { return regs_[reg_idx]; }
+
+  /**
+   * @brief Return the register to store the return value.
+   *
+   * @return temp::Temp*
+   */
+  virtual temp::Temp *RV() const = 0;
 
   /**
    * Get general-purpose registers except RSI
@@ -54,7 +82,7 @@ public:
   /**
    * Get word size
    */
-  [[nodiscard]] virtual int WordSize() = 0;
+  [[nodiscard]] virtual int WordSize() const = 0;
 
   [[nodiscard]] virtual temp::Temp *FramePointer() = 0;
 
@@ -73,6 +101,14 @@ public:
   /* TODO: Put your lab5 code here */
   /**
    * @brief An interface to get the tree expression.
+   *
+   * The signature corresponds to
+   *      T_exp F_Exp(F_access acc, T_exp framePtr);
+   * in the textbook P159.
+   *
+   * This interface mainly handles the scenario when accessing the variable from
+   * an inner-nested function, in which case the frame address must be
+   * calculated using static link.
    *
    * @param framePtr current frame of the access.
    * @return tree::Exp* mid IR expression
@@ -97,6 +133,13 @@ public:
    */
   [[nodiscard]] virtual frame::Access *allocateLocal(bool escape) const = 0;
 
+  /**
+   * @brief Handle view shift and generate some tree statements.
+   *
+   * @return tree::Stm*
+   */
+  [[nodiscard]] virtual tree::Stm *procEntryExit1(tree::Stm *) const = 0;
+
 private:
   std::list<frame::Access *> formals_;
 };
@@ -115,7 +158,7 @@ public:
   };
 
   /**
-   *Generate assembly for main program
+   * Generate assembly for main program
    * @param out FILE object for output assembly file
    */
   virtual void OutputAssem(FILE *out, OutputPhase phase,
@@ -138,6 +181,12 @@ public:
   tree::Stm *body_;
   Frame *frame_;
 
+  /**
+   * @brief For function definition.
+   *
+   * @param body the result returned from frame::Frame::procEntryExit1.
+   * @param frame the frame descriptor
+   */
   ProcFrag(tree::Stm *body, Frame *frame) : body_(body), frame_(frame) {}
 
   void OutputAssem(FILE *out, OutputPhase phase, bool need_ra) const override;

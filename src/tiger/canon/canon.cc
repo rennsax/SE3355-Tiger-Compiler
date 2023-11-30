@@ -309,7 +309,8 @@ Stm *MoveStm::Canon() {
     dst_ = eseqexp->exp_;
     return (new SeqStm(s, this))->Canon();
   }
-  assert(0); // dst_ should be temp or mem only
+  assert(0);      // dst_ should be temp or mem only
+  return nullptr; // Suppress warning
 }
 
 Stm *ExpStm::Canon() {

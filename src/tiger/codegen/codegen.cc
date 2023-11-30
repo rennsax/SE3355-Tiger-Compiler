@@ -9,14 +9,11 @@ namespace {
 
 constexpr int maxlen = 1024;
 
-
 } // namespace
 
 namespace cg {
 
-void CodeGen::Codegen() {
-  /* TODO: Put your lab5 code here */
-}
+void CodeGen::Codegen() { /* TODO: Put your lab5 code here */ }
 
 void AssemInstr::Print(FILE *out, temp::Map *map) const {
   for (auto instr : instr_list_->GetList())
@@ -80,7 +77,8 @@ temp::Temp *CallExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
   /* TODO: Put your lab5 code here */
 }
 
-temp::TempList *ExpList::MunchArgs(assem::InstrList &instr_list, std::string_view fs) {
+temp::TempList *ExpList::MunchArgs(assem::InstrList &instr_list,
+                                   std::string_view fs) {
   /* TODO: Put your lab5 code here */
 }
 

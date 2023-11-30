@@ -37,6 +37,14 @@ private:
   std::list<tree::StmList *> stmlist_list_;
 };
 
+/**
+ * @brief Basic block (P185)
+ *
+ * A basic block:
+ * - The first statement is a LABEL.
+ * - The last statement is a JUMP or CJUMP.
+ * - There are no other LABELs, JUMPs, or CJUMPs.
+ */
 class Block {
 public:
   temp::Label *label_;

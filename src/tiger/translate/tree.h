@@ -76,11 +76,39 @@ public:
   virtual ~Stm() = default;
 
   virtual void Print(FILE *out, int d) const = 0;
+  /**
+   * @brief Auxiliary function called by reorder.
+   *
+   * Corresponds to `do_stm` on the textbook (P182).
+   * Pulls all the ESEQ s out of a statement.
+   *
+   * @return Stm*
+   */
   virtual Stm *Canon() = 0;
   virtual void Munch(assem::InstrList &instr_list, std::string_view fs) = 0;
+
   // Used for Canon
   bool IsNop();
+  /**
+   * @brief Combine two statements.
+   *
+   * x and y may be no-op, which would be handled.
+   *
+   * @param x
+   * @param y
+   * @return Stm* some statement _equivalent_ to SEQ(s1, s2).
+   */
   static Stm *Seq(Stm *x, Stm *y);
+  /**
+   * @brief Determine whether x and y "definitely" commute.
+   *
+   * It's naive. We just say if y is constant / label or x is "no-op", then
+   * they commute.
+   *
+   * @param x
+   * @param y
+   * @return bool true is x and y commute
+   */
   static bool Commute(tree::Stm *x, tree::Exp *y);
 };
 
@@ -221,6 +249,15 @@ public:
   virtual ~Exp() = default;
 
   virtual void Print(FILE *out, int d) const = 0;
+  /**
+   * @brief Auxiliary function called by reorder.
+   *
+   * It corresponds to `do_exp` on the textbook.
+   *
+   * @return canon::StmAndExp
+   * A statement s and an expression e', where e' contains no ESEQs, such that
+   * ESEQ(s, e') would be equivalent to the original expression e.
+   */
   virtual canon::StmAndExp Canon() = 0;
   virtual temp::Temp *Munch(assem::InstrList &instr_list,
                             std::string_view fs) = 0;

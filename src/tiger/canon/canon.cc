@@ -3,6 +3,12 @@
 namespace tree {
 /**
  * Gets rid of the top-level SEQ's, producing a list
+ *
+ * The implementation is a little different from the textbook (P184).
+ * It's based on the pre-order traverse of the IR tree, which contiguously
+ * pushes the node to the statement list.
+ *
+ * @param this statement list to store the sequential statements
  * @param stm current statement
  */
 void StmList::Linear(tree::Stm *stm) {
@@ -43,6 +49,12 @@ bool Stm::Commute(tree::Stm *x, tree::Exp *y) {
 } // namespace tree
 namespace {
 
+/**
+ * @brief Wrapper for calling reorder function.
+ *
+ * The structure holds on a list of expression (their references).
+ *
+ */
 struct ExpRefList {
   std::list<std::reference_wrapper<tree::Exp *>> refs;
 
@@ -60,6 +72,18 @@ struct ExpRefList {
     refs.push_front(head);
   }
 
+  /**
+   * @brief General rewriting rules.
+   *
+   * The reorder function takes a list of expressions and returns a pair
+   * of (statement, expression-list).
+   * The statement contains all the things that must be executed before the
+   * expression-list.
+   *
+   * The algorithm: omitted, see the book P180 someday. // TODO
+   *
+   * @return tree::Stm*
+   */
   tree::Stm *Reorder() {
     if (refs.empty()) {
       return new tree::ExpStm(new tree::ConstExp(0)); // nop
@@ -178,6 +202,14 @@ tree::StmList *Canon::GetNext() {
   }
 }
 
+/**
+ * The implementation is logically equivalent to C_linearize on the textbook
+ * (P184).
+ *
+ * ```
+ *   return linear(do_stm(stm), NULL);
+ * ```
+ */
 tree::StmList *Canon::Linearize() {
   stm_canon_ = new tree::StmList();
   stm_canon_->Linear(stm_ir_->Canon());

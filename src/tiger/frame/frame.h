@@ -140,6 +140,32 @@ public:
    */
   [[nodiscard]] virtual tree::Stm *procEntryExit1(tree::Stm *) const = 0;
 
+  /**
+   * @brief Append a "sink" instruction.
+   *
+   * This function appends a "sink" instruction to the function body to tell the
+   * register allocator that certain registers are live at procedure exit.
+   *
+   * @param body The function body.
+   * @return assem::InstrList* Point to the list itself in fact.
+   */
+  [[nodiscard]] virtual assem::InstrList *
+  procEntryExit2(assem::InstrList *body) const = 0;
+
+  /**
+   * @brief Generate the prologue.
+   *
+   * The prologue need to include a definition of the assembly-language constant
+   * @c framesize.
+   *
+   * The implementation is time-wasting, but it permits the frame size to grow
+   * and shrink even after it is first created.
+   *
+   * @return assem::Proc*
+   */
+  [[nodiscard]] virtual assem::Proc *
+  procEntryExit3(assem::InstrList *) const = 0;
+
 private:
   std::list<frame::Access *> formals_;
 };

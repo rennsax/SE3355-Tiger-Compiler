@@ -21,6 +21,10 @@ class Symbol {
 
 public:
   static Symbol *UniqueSymbol(std::string_view);
+  /**
+   * @brief Get the name of the symbol.
+   *
+   */
   [[nodiscard]] std::string Name() const { return name_; }
 
 private:

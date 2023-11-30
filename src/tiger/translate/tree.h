@@ -85,6 +85,15 @@ public:
    * @return Stm*
    */
   virtual Stm *Canon() = 0;
+
+  /**
+   * @brief Maximal munch.
+   *
+   * See in Exp::Munch.
+   *
+   * @param instr_list
+   * @param fs
+   */
   virtual void Munch(assem::InstrList &instr_list, std::string_view fs) = 0;
 
   // Used for Canon
@@ -259,6 +268,23 @@ public:
    * ESEQ(s, e') would be equivalent to the original expression e.
    */
   virtual canon::StmAndExp Canon() = 0;
+
+  /**
+   * @brief Maximal munch, an algorithm for optimal (locally the best) tiling.
+   *
+   * The algorithm is described on the textbook P195:
+   * Starting at the root of the tree, find the largest tile that fits. Cover
+   * the root node – and perhaps several other nodes near the root – with this
+   * tile, leaving several subtrees. Now repeat the same algorithm for each
+   * subtree.
+   * A tile matches if each nonleaf node of the tile is labeled with the same
+   * operator as the corresponding node of the tree.
+   *
+   * @param instr_list The list to accumulate the instructions.
+   * @param fs // TODO what's this?
+   * @return temp::Temp The IR expression is evaluated, and the result (on the
+   * node) is returned.
+   */
   virtual temp::Temp *Munch(assem::InstrList &instr_list,
                             std::string_view fs) = 0;
 };

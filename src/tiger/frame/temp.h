@@ -31,6 +31,10 @@ private:
   static LabelFactory label_factory;
 };
 
+/**
+ * @brief Virtual register.
+ *
+ */
 class Temp {
   friend class TempFactory;
 
@@ -56,12 +60,23 @@ private:
   static TempFactory temp_factory;
 };
 
+/**
+ * @brief Temp mapping.
+ *
+ * A table whose keys are temp::Temp and whose bindings are @c std::string s.
+ *
+ * (P207) The map is primarily used by the register allocator. But it's
+ * convenient of the @c Frame module for describing the names of each
+ * preallocated registers (before register allocation, during codegen).
+ *
+ */
 class Map {
 public:
   void Enter(Temp *t, std::string *s);
   std::string *Look(Temp *t);
   void DumpMap(FILE *out);
 
+  /// Create a new, empty map.
   static Map *Empty();
   static Map *Name();
   static Map *LayerMap(Map *over, Map *under);

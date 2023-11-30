@@ -13,7 +13,8 @@ constexpr int maxlen = 1024;
 
 namespace cg {
 
-void CodeGen::Codegen() { /* TODO: Put your lab5 code here */ }
+void CodeGen::Codegen() { /* TODO: Put your lab5 code here */
+}
 
 void AssemInstr::Print(FILE *out, temp::Map *map) const {
   for (auto instr : instr_list_->GetList())
@@ -24,6 +25,9 @@ void AssemInstr::Print(FILE *out, temp::Map *map) const {
 
 namespace tree {
 /* TODO: Put your lab5 code here */
+
+// We don't need emit function described on the textbook (P212). Just use
+// assem::InstrList::Append.
 
 void SeqStm::Munch(assem::InstrList &instr_list, std::string_view fs) {
   /* TODO: Put your lab5 code here */

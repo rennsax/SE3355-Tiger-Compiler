@@ -79,11 +79,6 @@ public:
    */
   [[nodiscard]] virtual temp::TempList *ReturnSink() = 0;
 
-  /**
-   * Get word size
-   */
-  [[nodiscard]] virtual int WordSize() const = 0;
-
   [[nodiscard]] virtual temp::Temp *FramePointer() = 0;
 
   [[nodiscard]] virtual temp::Temp *StackPointer() = 0;

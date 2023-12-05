@@ -319,9 +319,6 @@ public:
   /**
    * @brief the contents of `wordSize` bytes of memory starting at address `exp`
    *
-   * `wordSize` is defined by the virtual function
-   * `frame::RegManager::WordSize()`.
-   *
    * MEM means both store (when used as the left child of a MOVE ) and fetch
    * (when used elsewhere).
    * When MEM is used as the left child of a MOVE , it means `store',
@@ -331,9 +328,8 @@ public:
    * constructor, since the MEM operation need to know how many bytes of the
    * object to be fetched or stored.
    * However, in Tiger, all the variables and l-values are scalar (P161), which
-   * means that they always occupy just one word of memory. So the `size`
-   * parameter is omitted, as it's a constant that can be obtained from
-   * `frame::RegManager::WordSize()`.
+   * means that they always occupy just one word of memory. So the constant
+   * `size` parameter is omitted.
    *
    *
    * @param exp

@@ -347,7 +347,6 @@ type::Ty *BreakExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
 
 type::Ty *LetExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
                              int labelcount, err::ErrorMsg *errormsg) const {
-  /* TODO: Put your lab4 code here */
   venv->BeginScope();
   tenv->BeginScope();
   for (auto dec : this->decs_->GetList()) {

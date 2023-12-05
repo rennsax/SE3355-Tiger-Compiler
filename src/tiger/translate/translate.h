@@ -56,7 +56,6 @@ class ProgTr;    // Defined below
  * @return Exp*
  */
 tr::Exp *makeSimpleVariable(tr::Access *access, tr::Level *level);
-// TODO add more definition
 
 void procEntryExit(tr::Level *level, tr::Exp *body,
                    const std::list<tr::Access *> &accessList);
@@ -203,8 +202,6 @@ private:
   // All library functions are declared at this level.
   static Level *outer_most_;
 };
-
-tr::Level *tr::Level::outer_most_ = new Level();
 
 class ProgTr {
 public:

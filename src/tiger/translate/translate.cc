@@ -148,6 +148,12 @@ Access *Level::allocLocal(bool escape) const {
   // TODO
 }
 
+tr::Level *tr::Level::outer_most_ = new Level();
+
+tr::Exp *makeSimpleVariable(tr::Access *access, tr::Level *level) {
+  // TODO
+}
+
 } // namespace tr
 
 // Translation is done in the semantic analysis phase of Tiger compiler.

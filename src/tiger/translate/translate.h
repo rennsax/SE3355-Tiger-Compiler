@@ -185,7 +185,6 @@ public:
    */
   [[nodiscard]] Access *allocLocal(bool escape) const;
 
-  static Level *mainLevel() { return Level::outer_most_; }
 
 private:
   /**
@@ -198,9 +197,6 @@ private:
   frame::Frame *frame_;
   Level *parent_;
 
-  // It is the level within which that program is nested.
-  // All library functions are declared at this level.
-  static Level *outer_most_;
 };
 
 class ProgTr {
@@ -226,11 +222,10 @@ public:
 private:
   std::unique_ptr<absyn::AbsynTree> absyn_tree_;
   std::unique_ptr<err::ErrorMsg> errormsg_;
-  /**
-   * Our implementation: obtain the "main" level (also the outermost level) by
-   * calling the static function tr::Level::mainLevel.
-   */
-  // std::unique_ptr<Level> main_level_;
+  // It is the level within which that program is nested.
+  // All library functions are declared at this level.
+  std::unique_ptr<tr::Level> main_level_;
+
   std::unique_ptr<env::TEnv> tenv_;
   std::unique_ptr<env::VEnv> venv_;
 

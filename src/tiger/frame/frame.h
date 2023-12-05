@@ -39,13 +39,6 @@ public:
   temp::Temp *GetRegister(int reg_idx) const { return regs_[reg_idx]; }
 
   /**
-   * @brief Return the register to store the return value.
-   *
-   * @return temp::Temp*
-   */
-  virtual temp::Temp *RV() const = 0;
-
-  /**
    * Get general-purpose registers except RSI
    * NOTE: returned temp list should be in the order of calling convention
    * @return general-purpose registers
@@ -93,7 +86,6 @@ protected:
 
 class Access {
 public:
-  /* TODO: Put your lab5 code here */
   /**
    * @brief An interface to get the tree expression.
    *
@@ -105,7 +97,14 @@ public:
    * an inner-nested function, in which case the frame address must be
    * calculated using static link.
    *
-   * @param framePtr current frame of the access.
+   * @param framePtr The frame pointer, passed as tree::TempExp.
+   *
+   * Why bother to pass the tree expression as an argument?
+   * Intuitive solution: Why not let InFrameAccess get the frame pointer by
+   * itself?
+   * The reason is: the "frame pointer" is not always stored in the register
+   * (e.g. %rbp)! And it's caused by the static link. See P159 for more info.
+   *
    * @return tree::Exp* mid IR expression
    */
   [[nodiscard]] virtual tree::Exp *toExp(tree::Exp *framePtr) const = 0;
@@ -113,7 +112,6 @@ public:
 };
 
 class Frame {
-  /* TODO: Put your lab5 code here */
 public:
   /**
    * @brief allocate a local variable (access) for the frame.
@@ -126,7 +124,7 @@ public:
    * frame memory.
    * @return frame::Access*
    */
-  [[nodiscard]] virtual frame::Access *allocateLocal(bool escape) const = 0;
+  virtual frame::Access *allocateLocal(bool escape) = 0;
 
   /**
    * @brief Handle view shift and generate some tree statements.
@@ -161,8 +159,14 @@ public:
   [[nodiscard]] virtual assem::Proc *
   procEntryExit3(assem::InstrList *) const = 0;
 
-private:
+  virtual std::string GetLabel() const = 0;
+
+  const std::list<frame::Access *> &getFormals() const { return formals_; }
+
+protected:
   std::list<frame::Access *> formals_;
+  std::list<frame::Access *> locals_;
+  temp::Label *name_;
 };
 
 /**
@@ -222,8 +226,6 @@ public:
 private:
   std::list<Frag *> frags_;
 };
-
-/* TODO: Put your lab5 code here */
 
 /**
  * @brief Factory to make a new frame for a function f with formal parameters.

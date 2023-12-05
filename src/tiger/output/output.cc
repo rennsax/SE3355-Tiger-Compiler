@@ -86,7 +86,7 @@ void ProcFrag::OutputAssem(FILE *out, OutputPhase phase, bool need_ra) const {
 //   }
 
   TigerLog("-------====Output assembly for %s=====-----\n",
-           frame_->name_->Name().data());
+           frame_->GetLabel().data());
 
   assem::Proc *proc = frame_->procEntryExit3(il);
   

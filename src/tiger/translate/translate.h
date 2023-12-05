@@ -118,7 +118,7 @@ private:
  * tr::Access is an abstract data type. It must know about static link.
  */
 struct Access {
-  Level *level_;
+  tr::Level *level_;
   frame::Access *access_;
 
   Access(Level *level, frame::Access *access)
@@ -131,9 +131,11 @@ struct Access {
  */
 class Level {
 public:
-  /* TODO: Put your lab5 code here */
   /**
    * @brief Create a nesting level.
+   *
+   * "Level" is a new abstraction of "Frame". It manages all machine-dependent
+   * details and exports
    *
    * Aside: managing **static link** (P144)
    * The management of static link is passing a extra parameter "static link" to
@@ -172,7 +174,15 @@ public:
    * It will get offsets in the frame (frame::Frame), strip the static link one,
    * and suitably converted into Access values.
    */
-  [[nodiscard]] const std::list<Access *> &formals() const;
+  [[nodiscard]] std::list<Access *> formals() const;
+
+  /**
+   * @brief Get the access of static link.
+   *
+   * @return frame::Access* No need to use tr::Access because to get the static
+   * link itself there is no need to follow some static links.
+   */
+  [[nodiscard]] frame::Access *stackLink() const;
 
   /**
    * @brief Create a local variable in the level.
@@ -180,11 +190,24 @@ public:
    * When Semant processes a local variable declaration at level lev, it calls
    * lev->allocLocal(esc) to create the variable in this level. (P143)
    *
-   * @param escape whether the variable is escaped
-   * @return Access*
+   * @param escape Whether the variable is escaped.
+   * @return tr::Access* It needs the no-const @c this pointer to initialize, so
+   * the method can't be const.
    */
-  [[nodiscard]] Access *allocLocal(bool escape) const;
+  [[nodiscard]] tr::Access *allocLocal(bool escape);
 
+  /**
+   * @brief Initialize a base level (outermost) for the whole program.
+   *
+   * @note Should only be invoked once, at the entrypoint of Translate phase.
+   *
+   * @param name The whole program name, e.g. Main.
+   * @return tr::Level*
+   */
+  static tr::Level *newBaseLevel(temp::Label *name);
+
+  frame::Frame *frame_;
+  Level *parent_;
 
 private:
   /**
@@ -193,18 +216,17 @@ private:
    *
    */
   Level() = default;
-
-  frame::Frame *frame_;
-  Level *parent_;
-
 };
 
 class ProgTr {
 public:
-  // TODO: Put your lab5 code here */
   ProgTr(std::unique_ptr<absyn::AbsynTree> ast,
          std::unique_ptr<err::ErrorMsg> error)
-      : absyn_tree_{std::move(ast)}, errormsg_{std::move(error)} {}
+      : absyn_tree_{std::move(ast)}, errormsg_{std::move(error)},
+        tenv_{std::make_unique<env::TEnv>()},
+        venv_{std::make_unique<env::VEnv>()},
+        main_level_(
+            tr::Level::newBaseLevel(temp::Label::UniqueSymbol("Tiger main"))) {}
 
   /**
    * Translate IR tree

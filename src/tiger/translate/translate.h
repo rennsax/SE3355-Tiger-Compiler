@@ -71,9 +71,35 @@ class ProgTr;    // Defined below
 
 [[nodiscard]] tr::Exp *makeSequentialExp(std::list<tr::Exp *> expList);
 
+/**
+ * @brief
+ *
+ * @param test_e
+ * @param then_e
+ * @param else_e Maybe @c NULL, which means the if clause has no else statement.
+ * @param error_msg
+ * @return tr::Exp*
+ */
 [[nodiscard]] tr::Exp *makeIfThenElse(tr::Exp *test_e, tr::Exp *then_e,
                                       tr::Exp *else_e,
                                       err::ErrorMsg *error_msg);
+
+/**
+ * @brief
+ *
+ * @param record
+ * @param index The index of the target field in the field list.
+ * @return tr::Exp*
+ */
+[[nodiscard]] tr::Exp *makeField(tr::Exp *record, int index);
+
+[[nodiscard]] tr::Exp *makeSubscript(tr::Exp *arr, tr::Exp *index);
+
+[[nodiscard]] tr::Exp *makeAssignment(tr::Exp *dst, tr::Exp *src);
+
+[[nodiscard]] temp::Label *makeDoneLabel();
+[[nodiscard]] tr::Exp *makeWhile(tr::Exp *test, tr::Exp *body,
+                                 temp::Label *done, err::ErrorMsg *errormsg);
 
 void procEntryExit(tr::Level *level, tr::Exp *body,
                    const std::list<tr::Access *> &accessList);

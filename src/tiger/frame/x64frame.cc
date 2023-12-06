@@ -15,6 +15,7 @@ X64RegManager::X64RegManager() {
 
 class InFrameAccess : public Access {
 public:
+  /// @note The offset is in byte. No need to multiply the work size.
   int offset;
 
   explicit InFrameAccess(int offset) : offset(offset) {}

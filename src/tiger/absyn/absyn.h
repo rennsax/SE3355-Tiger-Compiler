@@ -552,6 +552,15 @@ public:
                   err::ErrorMsg *errormsg) const override;
   /**
    * (P170) a new "fragment" of Tree code will be kept for the function’s body.
+   * (P173)
+   * ```
+   * The semantic analysis phase calls upon Tr_newLevel in processing a
+   * function header. Later it calls other interface functions of Translate to
+   * translate the body of the Tiger function; this has the side effect of
+   * remembering DataFrag fragments for any string literals encountered (see
+   * pages 166 and 269). Finally the semantic analyzer calls procEntryExit,
+   * which has the side effect of remembering a ProcFrag.
+   * ```
    *
    * @return tr::Exp* @sa tr::Exp#no_op
    */
@@ -612,6 +621,9 @@ public:
   virtual void Print(FILE *out, int d) const = 0;
   virtual type::Ty *SemAnalyze(env::TEnvPtr tenv,
                                err::ErrorMsg *errormsg) const = 0;
+  /**
+   * The translate interface is identical to #SemAnalyze, so we just reuse it.
+   */
   virtual type::Ty *Translate(env::TEnvPtr tenv,
                               err::ErrorMsg *errormsg) const = 0;
 

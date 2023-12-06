@@ -1,5 +1,6 @@
 #include "tiger/translate/translate.h"
 
+#include <queue>
 #include <tiger/absyn/absyn.h>
 
 #include "tiger/env/env.h"
@@ -14,6 +15,98 @@
  */
 extern frame::Frags *frags;
 extern frame::RegManager *reg_manager;
+
+/**
+ * @brief Imported from semant.cc.
+ *
+ * The namespace defines some utilities used during type-checking semant.
+ *
+ */
+namespace type_check {
+
+template <typename T> struct is_d_type {
+  bool operator()(type::Ty *ty) const { return typeid(T) == typeid(*ty); }
+};
+
+template <typename T> struct is_d_entry {
+  bool operator()(env::EnvEntry *ent) const {
+    return typeid(T) == typeid(*ent);
+  }
+};
+
+constexpr auto is_void_type = is_d_type<type::VoidTy>{};
+constexpr auto is_int_type = is_d_type<type::IntTy>{};
+constexpr auto is_name_type = is_d_type<type::NameTy>{};
+constexpr auto is_array_type = is_d_type<type::ArrayTy>{};
+constexpr auto is_record_type = is_d_type<type::RecordTy>{};
+constexpr auto is_nil_type = is_d_type<type::NilTy>{};
+constexpr auto is_fun_entry = is_d_entry<env::FunEntry>{};
+constexpr auto is_var_entry = is_d_entry<env::VarEntry>{};
+/**
+ * @brief IS_SAME_DYNAMICAL_TYPE check if the two types are actually identical.
+ *
+ * It's just an alias of the static method type::Ty#IsSameType.
+ *
+ */
+constexpr bool (*is_same_d_type)(type::Ty *,
+                                 type::Ty *) = &type::Ty::IsSameType;
+class DirectGraph {
+public:
+  explicit DirectGraph(std::size_t n) : adj_list_(n) {}
+  ~DirectGraph() = default;
+  void add_node(std::size_t from, std::size_t to) {
+    adj_list_.at(from).push_front(to);
+  }
+
+  bool has_circuit() const {
+    const std::size_t N = adj_list_.size();
+    /**
+     * We can always find the topological sorting in a DAG.
+     */
+    std::vector<std::size_t> topo_sorted{};
+    topo_sorted.reserve(N);
+
+    std::vector<int> in_degree(N);
+    // Calculate the in-degree of each node
+    for (const auto &adj : adj_list_) {
+      for (auto end_n : adj) {
+        in_degree[end_n]++;
+      }
+    }
+
+    std::queue<std::size_t> zero_in_degree_q{};
+    for (std::size_t i = 0; i < N; ++i) {
+      if (in_degree[i] == 0) {
+        zero_in_degree_q.push(i);
+      }
+    }
+    // Kahn
+    while (!zero_in_degree_q.empty()) {
+      auto cur = zero_in_degree_q.front();
+      topo_sorted.push_back(cur);
+      zero_in_degree_q.pop();
+
+      for (auto end_n : adj_list_.at(cur)) {
+        if (--in_degree[end_n] == 0) {
+          zero_in_degree_q.push(end_n);
+        }
+      }
+    }
+    // The algo shuts down before all nodes are pushed, which implies a circuit.
+    return topo_sorted.size() != N;
+  }
+
+private:
+  /**
+   * @brief The directed graph of the type/function declaration sequence.
+   *
+   * If the specific definition of a type/function refers to another
+   * type/function in the sequence of mutually recursive types/functions, then a
+   * directed edge is added to the graph.
+   */
+  std::vector<std::list<std::size_t>> adj_list_;
+};
+} // namespace type_check
 
 namespace tr {
 
@@ -90,6 +183,10 @@ struct ExpAndTy {
 
   ExpAndTy(tr::Exp *exp) : exp_(exp), ty_(dummyType) {}
   ExpAndTy(tr::Exp *exp, type::Ty *ty) : exp_(exp), ty_(ty) {}
+
+  [[nodiscard]] static ExpAndTy *dummy() {
+    return new ExpAndTy(tr::Exp::no_op(), type::IntTy::Instance());
+  }
 };
 
 struct ExExp : public Exp {
@@ -129,8 +226,7 @@ struct NxExp : public Exp {
   explicit NxExp(tree::Stm *stm) : stm_(stm) {}
 
   [[nodiscard]] tree::Exp *UnEx() override {
-    // Never occur
-    assert(0);
+    return new tree::EseqExp(this->stm_, new tree::ConstExp(0));
   }
   [[nodiscard]] tree::Stm *UnNx() override { return this->stm_; }
   [[nodiscard]] Cx UnCx(err::ErrorMsg *errormsg) override {
@@ -338,6 +434,45 @@ tr::Exp *makeSequentialExp(std::list<tr::Exp *> expList) {
   }
 }
 
+tr::Exp *makeField(tr::Exp *record, int index) {
+  return new tr::ExExp(new tree::MemExp(
+      new tree::BinopExp(tree::BinOp::PLUS_OP, record->UnEx(),
+                         new tree::ConstExp(index * frame::KX64WordSize))));
+}
+
+tr::Exp *makeSubscript(tr::Exp *arr, tr::Exp *index) {
+  return new tr::ExExp(new tree::MemExp(new tree::BinopExp(
+      tree::BinOp::PLUS_OP, arr->UnEx(),
+      new tree::BinopExp(tree::BinOp::MUL_OP, index->UnEx(),
+                         new tree::ConstExp(frame::KX64WordSize)))));
+}
+
+tr::Exp *makeAssignment(tr::Exp *dst, tr::Exp *src) {
+  return new tr::NxExp(new tree::MoveStm(dst->UnEx(), src->UnEx()));
+}
+
+temp::Label *makeDoneLabel() { return temp::LabelFactory::NewLabel(); }
+
+tr::Exp *makeWhile(tr::Exp *test, tr::Exp *body, temp::Label *done,
+                   err::ErrorMsg *errormsg) {
+  auto test_l = temp::LabelFactory::NewLabel();
+  auto body_l = temp::LabelFactory::NewLabel();
+  // Store the condition.
+  auto cjump = test->UnCx(errormsg);
+  cjump.trues_.DoPatch(body_l);
+  cjump.falses_.DoPatch(done);
+
+  return new tr::NxExp(new tree::SeqStm(
+      new tree::LabelStm(test_l),
+      new tree::SeqStm(
+          cjump.stm_,
+          new tree::SeqStm(
+              body->UnNx(),
+              new tree::SeqStm(
+                  new tree::JumpStm(new tree::NameExp(test_l),
+                                    new std::vector<temp::Label *>{test_l}),
+                  new tree::LabelStm(done))))));
+}
 } // namespace tr
 
 // Translation is done in the semantic analysis phase of Tiger compiler.
@@ -358,8 +493,13 @@ tr::ExpAndTy *SimpleVar::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                    tr::Level *level, temp::Label *done,
                                    err::ErrorMsg *errormsg) const {
   auto entry = venv->Look(this->sym_);
-  assert(entry);
-  assert(typeid(*entry) == typeid(env::VarEntry));
+
+  if (!(entry && type_check::is_var_entry(entry))) {
+    errormsg->Error(this->pos_, "undefined variable %s",
+                    this->sym_->Name().data());
+    return tr::ExpAndTy::dummy();
+  }
+
   auto var_entry = static_cast<env::VarEntry *>(entry);
   auto exp = tr::makeSimpleVariable(var_entry->access_, level);
   return new tr::ExpAndTy(exp, var_entry->ty_);
@@ -368,34 +508,77 @@ tr::ExpAndTy *SimpleVar::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
 tr::ExpAndTy *FieldVar::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                   tr::Level *level, temp::Label *done,
                                   err::ErrorMsg *errormsg) const {
-  /* TODO: Put your lab5 code here */
+  auto var_exp_and_ty =
+      this->var_->Translate(venv, tenv, level, done, errormsg);
+
+  auto var_ty = var_exp_and_ty->ty_;
+  assert(var_ty);
+
+  if (!type_check::is_record_type(var_ty)) {
+    errormsg->Error(this->pos_, "not a record type");
+    return tr::ExpAndTy::dummy();
+  }
+  auto field_list = static_cast<type::RecordTy *>(var_ty)->fields_->GetList();
+  auto found_field_it = std::find_if(
+      field_list.begin(), field_list.end(), [this](type::Field *field) -> bool {
+        return field->name_->Name() == this->sym_->Name();
+      });
+  if (found_field_it == field_list.end()) {
+    errormsg->Error(this->pos_, "field %s doesn't exist",
+                    this->sym_->Name().c_str());
+    return tr::ExpAndTy::dummy();
+  }
+  int field_index = std::distance(field_list.begin(), found_field_it);
+
+  auto ret_ty = (*found_field_it)->ty_->ActualTy();
+  auto ret_exp = tr::makeField(var_exp_and_ty->exp_, field_index);
+
+  return new tr::ExpAndTy(ret_exp, ret_ty);
 }
 
 tr::ExpAndTy *SubscriptVar::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                       tr::Level *level, temp::Label *done,
                                       err::ErrorMsg *errormsg) const {
-  /* TODO: Put your lab5 code here */
+  auto array_exp_and_ty =
+      this->var_->Translate(venv, tenv, level, done, errormsg);
+  auto array_ty = array_exp_and_ty->ty_;
+
+  if (!type_check::is_array_type(array_ty)) {
+    errormsg->Error(this->pos_, "array type required");
+    return tr::ExpAndTy::dummy();
+  }
+  auto index_exp_and_ty =
+      this->subscript_->Translate(venv, tenv, level, done, errormsg);
+  auto index_ty = index_exp_and_ty->ty_;
+
+  if (!type_check::is_int_type(index_ty)) {
+    errormsg->Error(this->pos_, "integer required");
+  }
+  auto ret_ty = static_cast<type::ArrayTy *>(array_ty)->ty_->ActualTy();
+  auto ret_exp =
+      tr::makeSubscript(array_exp_and_ty->exp_, index_exp_and_ty->exp_);
+
+  return new tr::ExpAndTy(ret_exp, ret_ty);
 }
 
 tr::ExpAndTy *VarExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                 tr::Level *level, temp::Label *done,
                                 err::ErrorMsg *errormsg) const {
-  /* TODO: Put your lab5 code here */
-  auto var_exp = this->var_->Translate(venv, tenv, level, done, errormsg);
-  return new tr::ExpAndTy(var_exp->exp_);
+  return this->var_->Translate(venv, tenv, level, done, errormsg);
 }
 
 tr::ExpAndTy *NilExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                 tr::Level *level, temp::Label *done,
                                 err::ErrorMsg *errormsg) const {
-  /* TODO: Put your lab5 code here */
+  return new tr::ExpAndTy(new tr::ExExp(new tree::ConstExp(0)),
+                          type::NilTy::Instance());
 }
 
 tr::ExpAndTy *IntExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                 tr::Level *level, temp::Label *done,
                                 err::ErrorMsg *errormsg) const {
   return new tr::ExpAndTy(new tr::ExExp(new tree::ConstExp(this->val_)),
-                          tr::dummyType);
+                          type::IntTy::Instance());
 }
 
 tr::ExpAndTy *StringExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
@@ -407,7 +590,12 @@ tr::ExpAndTy *StringExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
 tr::ExpAndTy *CallExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                  tr::Level *level, temp::Label *done,
                                  err::ErrorMsg *errormsg) const {
-  /* TODO: Put your lab5 code here */
+  // TODO type checking
+  auto entry = venv->Look(this->func_);
+  assert(entry && type_check::is_fun_entry(entry));
+
+  auto fun_entry = static_cast<env::FunEntry *>(entry);
+  std::list<tr::Exp *> call_args_exp{};
 }
 
 tr::ExpAndTy *OpExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
@@ -418,9 +606,37 @@ tr::ExpAndTy *OpExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
   auto right_exp_and_ty =
       this->right_->Translate(venv, tenv, level, done, errormsg);
 
-  auto res_exp = tr::makeBinaryExp(this->oper_, left_exp_and_ty->exp_,
+  auto lhs_ty = left_exp_and_ty->ty_;
+  auto rhs_ty = right_exp_and_ty->ty_;
+
+  switch (this->oper_) {
+  // Comparison
+  // Equal and no-equal: also on the record/arr type, compare by "reference"
+  case Oper::EQ_OP:
+  case Oper::NEQ_OP:
+    if (!type_check::is_same_d_type(lhs_ty, rhs_ty)) {
+      errormsg->Error(this->pos_, "same type required");
+    }
+    break;
+  case Oper::PLUS_OP:
+  case Oper::MINUS_OP:
+  case Oper::TIMES_OP:
+  case Oper::DIVIDE_OP:
+  case Oper::LE_OP:
+  case Oper::GE_OP:
+  case Oper::LT_OP:
+  case Oper::GT_OP:
+    if (!(type_check::is_int_type(lhs_ty) && type_check::is_int_type(rhs_ty))) {
+      errormsg->Error(this->pos_, "integer required");
+    }
+  default:
+    // TODO check more?
+    break;
+  }
+
+  auto ret_exp = tr::makeBinaryExp(this->oper_, left_exp_and_ty->exp_,
                                    right_exp_and_ty->exp_);
-  return new tr::ExpAndTy(res_exp, tr::dummyType);
+  return new tr::ExpAndTy(ret_exp, type::IntTy::Instance());
 }
 
 tr::ExpAndTy *RecordExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
@@ -439,19 +655,34 @@ tr::ExpAndTy *SeqExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
     auto ret = exp->Translate(venv, tenv, level, done, errormsg);
     expList.push_back(ret->exp_);
   }
-  auto res_exp = tr::makeSequentialExp(expList);
+  auto res_exp = tr::makeSequentialExp(std::move(expList));
   return new tr::ExpAndTy(res_exp);
 }
 
 tr::ExpAndTy *AssignExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                    tr::Level *level, temp::Label *done,
                                    err::ErrorMsg *errormsg) const {
-  /* TODO: Put your lab5 code here */
+  /// Bypass that "ugly coupling". @sa absyn::AssignExp#SemAnalyze.
+  // Something that check "loop variable can't be assigned".
+
+  auto lvalue_exp_and_ty =
+      this->var_->Translate(venv, tenv, level, done, errormsg);
+  auto assign_to_exp_and_ty =
+      this->exp_->Translate(venv, tenv, level, done, errormsg);
+
+  if (!type_check::is_same_d_type(lvalue_exp_and_ty->ty_,
+                                  assign_to_exp_and_ty->ty_)) {
+    errormsg->Error(this->pos_, "unmatched assign exp");
+  }
+  return new tr::ExpAndTy(
+      tr::makeAssignment(lvalue_exp_and_ty->exp_, assign_to_exp_and_ty->exp_),
+      type::VoidTy::Instance());
 }
 
 tr::ExpAndTy *IfExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                tr::Level *level, temp::Label *done,
                                err::ErrorMsg *errormsg) const {
+  // TODO type-checking
   auto test_exp_and_ty =
       this->test_->Translate(venv, tenv, level, done, errormsg);
   auto then_exp_and_ty =
@@ -472,7 +703,17 @@ tr::ExpAndTy *IfExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
 tr::ExpAndTy *WhileExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                   tr::Level *level, temp::Label *done,
                                   err::ErrorMsg *errormsg) const {
-  /* TODO: Put your lab5 code here */
+  auto test_exp_and_ty =
+      this->test_->Translate(venv, tenv, level, done, errormsg);
+
+  done = tr::makeDoneLabel();
+
+  auto body_exp_any_ty =
+      this->body_->Translate(venv, tenv, level, done, errormsg);
+
+  return new tr::ExpAndTy(tr::makeWhile(test_exp_and_ty->exp_,
+                                        body_exp_any_ty->exp_, done, errormsg),
+                          type::VoidTy::Instance());
 }
 
 /**
@@ -489,17 +730,57 @@ tr::ExpAndTy *WhileExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
  * done:
  * ```
  *
+ * ```
+ * let var i := lo
+ *     var limit := hi
+ * in while i <= limit
+ *     do (body; i := i + 1)
+ * end
+ * ```
+ *
  */
 tr::ExpAndTy *ForExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                 tr::Level *level, temp::Label *done,
                                 err::ErrorMsg *errormsg) const {
-  /* TODO: Put your lab5 code here */
+  // FIXME memory leak
+  auto decList = new DecList();
+  auto limit_symbol =
+      sym::Symbol::UniqueSymbol(this->var_->Name() + "__limit__");
+  auto i_dec = new VarDec(0, limit_symbol, nullptr, this->hi_);
+  i_dec->escape_ = this->escape_;
+  decList->Prepend(i_dec);
+  auto limit_dec = new VarDec(0, this->var_, nullptr, this->lo_);
+  limit_dec->escape_ = this->escape_;
+  decList->Prepend(limit_dec);
+
+  auto test_exp =
+      new OpExp(0, Oper::LE_OP, new VarExp(0, new SimpleVar(0, this->var_)),
+                new VarExp(0, new SimpleVar(0, limit_symbol)));
+  auto increase_exp = new AssignExp(
+      0, new SimpleVar(0, this->var_),
+      new OpExp(0, Oper::PLUS_OP, new VarExp(0, new SimpleVar(0, this->var_)),
+                new IntExp(0, 1)));
+  auto body_exp_list = new ExpList();
+  body_exp_list->Prepend(increase_exp);
+  body_exp_list->Prepend(test_exp);
+  auto while_body = new SeqExp(0, body_exp_list);
+
+  auto let_exp = new LetExp(0, decList, new WhileExp(0, test_exp, while_body));
+
+  return let_exp->Translate(venv, tenv, level, done, errormsg);
 }
 
 tr::ExpAndTy *BreakExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                   tr::Level *level, temp::Label *done,
                                   err::ErrorMsg *errormsg) const {
-  /* TODO: Put your lab5 code here */
+  if (done == nullptr) {
+    errormsg->Error(this->pos_, "break is not inside any loop");
+    return tr::ExpAndTy::dummy();
+  }
+  return new tr::ExpAndTy(
+      new tr::NxExp(new tree::JumpStm(new tree::NameExp(done),
+                                      new std::vector<temp::Label *>{done})),
+      type::VoidTy::Instance());
 }
 
 tr::ExpAndTy *LetExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
@@ -525,7 +806,7 @@ tr::ExpAndTy *ArrayExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
 tr::ExpAndTy *VoidExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                  tr::Level *level, temp::Label *done,
                                  err::ErrorMsg *errormsg) const {
-  /* TODO: Put your lab5 code here */
+  return new tr::ExpAndTy(tr::Exp::no_op(), type::VoidTy::Instance());
 }
 
 /**
@@ -560,37 +841,143 @@ tr::Exp *VarDec::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                            err::ErrorMsg *errormsg) const {
   // var decl in Tiger language must give an init.
   assert(this->init_);
+
+  auto ty_entry = this->typ_ ? tenv->Look(this->typ_) : nullptr;
+  if (this->typ_ && !ty_entry) {
+    errormsg->Error(this->pos_, "undefined type %s", this->typ_->Name().data());
+  }
+
   auto init_exp_and_ty =
       this->init_->Translate(venv, tenv, level, done, errormsg);
+
+  auto init_ty = init_exp_and_ty->ty_;
+  if (this->typ_ && !type_check::is_same_d_type(ty_entry, init_ty)) {
+    errormsg->Error(this->pos_, "type mismatch");
+  }
+  if (!this->typ_ && type_check::is_nil_type(init_ty)) {
+    errormsg->Error(this->pos_,
+                    "init should not be nil without type specified");
+  }
 
   // Allocate a local variable in the frame (increase the frame size).
   auto access = level->allocLocal(this->escape_);
   auto dst_exp = tr::makeSimpleVariable(access, level);
 
   // Update var env
-  venv->Enter(this->var_, new env::VarEntry(access, tr::dummyType));
+  venv->Enter(this->var_, new env::VarEntry(access, init_ty));
+
+  // Initialization action.
   auto init_exp = new tr::NxExp(
       new tree::MoveStm(dst_exp->UnEx(), init_exp_and_ty->exp_->UnEx()));
   return init_exp;
 }
 
+/**
+ * type declaration: identical to lab4 type-checking.
+ */
 tr::Exp *TypeDec::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                             tr::Level *level, temp::Label *done,
                             err::ErrorMsg *errormsg) const {
+  auto a_named_type_list = this->types_->GetList();
+  std::vector<type::NameTy *> s_named_type_list{};
+  // Should be a DAG
+  type_check::DirectGraph dg{a_named_type_list.size()};
+  s_named_type_list.reserve(a_named_type_list.size());
+
+  // Enter the "headers"
+  for (auto type : a_named_type_list) {
+    // Check duplicate
+    auto maybe_dup =
+        std::find_if(s_named_type_list.begin(), s_named_type_list.end(),
+                     [type](type::NameTy *ty) -> bool {
+                       return ty->sym_->Name() == type->name_->Name();
+                     });
+    if (maybe_dup != s_named_type_list.end()) {
+      errormsg->Error(this->pos_, "two types have the same name");
+      return tr::Exp::no_op();
+    }
+
+    auto s_named_ty = new type::NameTy{type->name_, nullptr};
+    // Travel the header list to find if there is the same header.
+    tenv->Enter(type->name_, s_named_ty);
+    s_named_type_list.push_back(s_named_ty);
+  }
+  {
+    auto a_it = a_named_type_list.begin();
+    auto s_it = s_named_type_list.begin();
+    while (a_it != a_named_type_list.end()) {
+      auto actual_ty = (*a_it)->ty_->SemAnalyze(tenv, errormsg);
+      (*s_it)->ty_ = actual_ty;
+
+      if (type_check::is_name_type(actual_ty)) {
+
+        auto found_it = std::find_if(
+            s_named_type_list.begin(), s_named_type_list.end(),
+            [actual_ty](type::NameTy *ty) -> bool {
+              return ty->sym_->Name() ==
+                     static_cast<type::NameTy *>(actual_ty)->sym_->Name();
+            });
+
+        if (found_it != s_named_type_list.end()) {
+          // Add the edge.
+          auto begin_n = s_it - s_named_type_list.begin();
+          auto end_n = found_it - s_named_type_list.begin();
+          dg.add_node(begin_n, end_n);
+        }
+        /**
+         * The name type isn't in the mutually recursive types,
+         * so there is no need to add an edge.
+         */
+      }
+
+      s_it++;
+      a_it++;
+    }
+    assert(s_it == s_named_type_list.end());
+  }
+  if (dg.has_circuit()) {
+    errormsg->Error(this->pos_, "illegal type cycle");
+  }
+
   return tr::Exp::no_op();
 }
 
 type::Ty *NameTy::Translate(env::TEnvPtr tenv, err::ErrorMsg *errormsg) const {
-  /* TODO: Put your lab5 code here */
+  auto entry = tenv->Look(this->name_);
+  if (!entry) {
+    errormsg->Error(this->pos_, "undefined type %s",
+                    this->name_->Name().data());
+    return type::VoidTy::Instance();
+  }
+  // From the book P121:
+  // It’s important that transTy stop as soon as it gets to any Ty_Name type.
+  // That is, we should not get the actual type since it may be NULL.
+  return entry;
 }
 
 type::Ty *RecordTy::Translate(env::TEnvPtr tenv,
                               err::ErrorMsg *errormsg) const {
-  /* TODO: Put your lab5 code here */
+  auto field_list = this->record_->GetList();
+  auto field_ty_list = new type::FieldList{};
+  for (auto field : field_list) {
+    auto entry = tenv->Look(field->typ_);
+    if (!entry) {
+      errormsg->Error(this->pos_, "undefined type %s",
+                      field->typ_->Name().data());
+    }
+    field_ty_list->Append(new type::Field(field->name_, entry));
+  }
+  return new type::RecordTy(field_ty_list);
 }
 
 type::Ty *ArrayTy::Translate(env::TEnvPtr tenv, err::ErrorMsg *errormsg) const {
-  /* TODO: Put your lab5 code here */
+  auto entry = tenv->Look(this->array_);
+  if (!entry) {
+    errormsg->Error(this->pos_, "undefined type %s",
+                    this->array_->Name().data());
+    return new type::ArrayTy{type::IntTy::Instance()};
+  }
+  return new type::ArrayTy{entry->ActualTy()};
 }
 
 } // namespace absyn

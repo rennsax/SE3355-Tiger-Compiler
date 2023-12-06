@@ -289,9 +289,10 @@ Exp *Exp::no_op() { return new tr::ExExp(new tree::ConstExp(0)); }
 void ProgTr::Translate() {
   FillBaseTEnv();
   FillBaseVEnv();
-  this->absyn_tree_->Translate(this->venv_.get(), this->tenv_.get(),
-                               this->main_level_.get(), nullptr,
-                               errormsg_.get());
+  auto exp_and_ty = this->absyn_tree_->Translate(
+      this->venv_.get(), this->tenv_.get(), this->main_level_.get(), nullptr,
+      errormsg_.get());
+  this->main_level_->procEntryExit(exp_and_ty->exp_, {});
 }
 
 tr::Level *tr::Level::newBaseLevel(temp::Label *name) {
@@ -386,7 +387,7 @@ tr::Exp *makeSequentialExp(std::list<tr::Exp *> expList) {
   }
 
   auto first = expList.front();
-  auto first_exp = first->UnEx();
+  auto first_exp = first->UnNx();
   expList.pop_front();
   if (expList.empty()) {
     return first;
@@ -394,8 +395,7 @@ tr::Exp *makeSequentialExp(std::list<tr::Exp *> expList) {
   auto other_res = makeSequentialExp(std::move(expList));
   auto other_exp = other_res->UnEx();
 
-  return new tr::ExExp(
-      new tree::EseqExp(new tree::ExpStm(first_exp), other_exp));
+  return new tr::ExExp(new tree::EseqExp(first_exp, other_exp));
 }
 
 [[nodiscard]] tr::Exp *makeIfThenElse(tr::Exp *test_e, tr::Exp *then_e,
@@ -941,13 +941,18 @@ tr::ExpAndTy *LetExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                 err::ErrorMsg *errormsg) const {
   venv->BeginScope();
   tenv->BeginScope();
+  std::list<tr::Exp *> exps{};
   for (auto dec : this->decs_->GetList()) {
-    dec->Translate(venv, tenv, level, done, errormsg);
+    auto dec_exp = dec->Translate(venv, tenv, level, done, errormsg);
+    exps.push_back(dec_exp);
   }
-  auto res = this->body_->Translate(venv, tenv, level, done, errormsg);
+  auto body_exp_and_ty =
+      this->body_->Translate(venv, tenv, level, done, errormsg);
   venv->EndScope();
   tenv->EndScope();
-  return res;
+  exps.push_back(body_exp_and_ty->exp_);
+  return new tr::ExpAndTy(tr::makeSequentialExp(std::move(exps)),
+                          body_exp_and_ty->ty_);
 }
 
 tr::ExpAndTy *ArrayExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,

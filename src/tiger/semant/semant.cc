@@ -414,7 +414,6 @@ void FunctionDec::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
       errormsg->Error(this->pos_, "two functions have the same name");
       return;
     }
-    // Check duplicate
     // analyze the formals and result
     auto formals = fun->params_->MakeFormalTyList(tenv, errormsg);
     // If fun->result == nullptr, it declare a **procedure**.

@@ -43,14 +43,53 @@ public:
   X64RegManager();
 
 #define REGISTER(sym) (regs_.at(static_cast<std::size_t>(Register::sym)))
-  temp::TempList *Registers() override {}
-  temp::TempList *ArgRegs() override {}
-  temp::TempList *CallerSaves() override {}
-  temp::TempList *CalleeSaves() override {}
-  temp::TempList *ReturnSink() override {}
+  temp::TempList *Registers() override {
+    auto res = new temp::TempList{};
+    for (int i = 0; i < static_cast<std::size_t>(Register::COUNT); ++i) {
+      res->Append(regs_.at(i));
+    }
+    return res;
+  }
+  temp::TempList *ArgRegs() override {
+    auto res = new temp::TempList{};
+    res->Append(REGISTER(RDI));
+    res->Append(REGISTER(RSI));
+    res->Append(REGISTER(RDX));
+    res->Append(REGISTER(RCX));
+    res->Append(REGISTER(R8));
+    res->Append(REGISTER(R9));
+    return res;
+  }
+  temp::TempList *CallerSaves() override {
+    auto res = new temp::TempList{};
+    res->Append(REGISTER(RAX));
+    res->Append(REGISTER(RDI));
+    res->Append(REGISTER(RSI));
+    res->Append(REGISTER(RDX));
+    res->Append(REGISTER(RCX));
+    res->Append(REGISTER(R8));
+    res->Append(REGISTER(R9));
+    res->Append(REGISTER(R10));
+    res->Append(REGISTER(R11));
+    return res;
+  }
+  temp::TempList *CalleeSaves() override {
+    auto res = new temp::TempList{};
+    res->Append(REGISTER(RBP));
+    res->Append(REGISTER(RBX));
+    res->Append(REGISTER(R12));
+    res->Append(REGISTER(R13));
+    res->Append(REGISTER(R14));
+    res->Append(REGISTER(R15));
+    return res;
+  }
+  temp::TempList *ReturnSink() override {
+    // TODO return sink?
+    return nullptr;
+  }
   temp::Temp *FramePointer() override { return REGISTER(RSP); }
-  temp::Temp *StackPointer() override {}
-  temp::Temp *ReturnValue() override {}
+  temp::Temp *StackPointer() override { return REGISTER(RBP); }
+  temp::Temp *ReturnValue() override { return REGISTER(RAX); }
 #undef REGISTER
 };
 

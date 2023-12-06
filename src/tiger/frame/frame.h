@@ -68,6 +68,8 @@ public:
 
   /**
    * Get return-sink registers
+   * Used by frame::Frame#procEntryExit2.
+   *
    * @return return-sink registers
    */
   [[nodiscard]] virtual temp::TempList *ReturnSink() = 0;
@@ -136,6 +138,7 @@ public:
   /**
    * @brief Append a "sink" instruction.
    *
+   * (P215)
    * This function appends a "sink" instruction to the function body to tell the
    * register allocator that certain registers are live at procedure exit.
    *

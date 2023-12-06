@@ -24,7 +24,7 @@ namespace frame {
  * @param args
  * @return tree::Exp*
  */
-tree::Exp *externalCall(std::string_view callee_label, tree::ExpList args);
+tree::Exp *externalCall(std::string_view callee_label, tree::ExpList *args);
 
 class RegManager {
 public:

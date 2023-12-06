@@ -97,9 +97,17 @@ class ProgTr;    // Defined below
 
 [[nodiscard]] tr::Exp *makeAssignment(tr::Exp *dst, tr::Exp *src);
 
-[[nodiscard]] temp::Label *makeDoneLabel();
 [[nodiscard]] tr::Exp *makeWhile(tr::Exp *test, tr::Exp *body,
                                  temp::Label *done, err::ErrorMsg *errormsg);
+
+[[nodiscard]] tr::Exp *makeCall(temp::Label *fun_label,
+                                const std::list<tr::Exp *> &args);
+
+[[nodiscard]] tr::Exp *makeString(temp::Label *str_label);
+
+[[nodiscard]] tr::Exp *makeRecord(const std::vector<tr::Exp *> &field_exps);
+
+[[nodiscard]] tr::Exp *makeArray(tr::Exp *size, tr::Exp *init);
 
 void procEntryExit(tr::Level *level, tr::Exp *body,
                    const std::list<tr::Access *> &accessList);
@@ -221,12 +229,21 @@ public:
   [[nodiscard]] std::list<Access *> formals() const;
 
   /**
-   * @brief Get the access of static link.
+   * @brief Get the access of the static link.
    *
    * @return frame::Access* No need to use tr::Access because to get the static
    * link itself there is no need to follow some static links.
    */
-  [[nodiscard]] frame::Access *stackLink() const;
+  [[deprecated]] frame::Access *stackLink() const;
+
+  /**
+   * @brief Prepare the static link, which will be passed for calling the
+   * function defined in @c level.
+   *
+   * @param level In which level the callee is defined.
+   * @return tr::Exp*
+   */
+  [[nodiscard]] tr::Exp *prepareStaticLink(tr::Level *level) const;
 
   /**
    * @brief Create a local variable in the level.
@@ -252,6 +269,9 @@ public:
 
   frame::Frame *frame_;
   Level *parent_;
+
+  // In byte
+  static int KStaticLinkOffset;
 
 private:
   /**

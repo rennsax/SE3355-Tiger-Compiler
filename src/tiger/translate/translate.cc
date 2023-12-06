@@ -108,6 +108,14 @@ private:
 };
 } // namespace type_check
 
+namespace frame {
+
+tree::Exp *externalCall(std::string_view callee_label, tree::ExpList *args) {
+  return new tree::CallExp(
+      new tree::NameExp(temp::Label::UniqueSymbol(callee_label)), args);
+}
+} // namespace frame
+
 namespace tr {
 
 // [[deprecated("not used")]]
@@ -317,7 +325,9 @@ tr::Exp *makeSimpleVariable(tr::Access *access, tr::Level *level,
 
   // Get the static link, which is the frame pointer of the next level.
   assert(level->parent_);
-  auto fp_new = level->stackLink()->toExp(framePointer);
+  auto fp_new =
+      new tree::BinopExp(tree::BinOp::PLUS_OP, framePointer,
+                         new tree::ConstExp(Level::KStaticLinkOffset));
   return makeSimpleVariable(access, level->parent_, fp_new);
 }
 
@@ -376,16 +386,16 @@ tr::Exp *makeSequentialExp(std::list<tr::Exp *> expList) {
   }
 
   auto first = expList.front();
+  auto first_exp = first->UnEx();
   expList.pop_front();
   if (expList.empty()) {
     return first;
   }
   auto other_res = makeSequentialExp(std::move(expList));
   auto other_exp = other_res->UnEx();
-  delete other_res;
 
   return new tr::ExExp(
-      new tree::EseqExp(new tree::ExpStm(first->UnEx()), other_exp));
+      new tree::EseqExp(new tree::ExpStm(first_exp), other_exp));
 }
 
 [[nodiscard]] tr::Exp *makeIfThenElse(tr::Exp *test_e, tr::Exp *then_e,
@@ -451,8 +461,6 @@ tr::Exp *makeAssignment(tr::Exp *dst, tr::Exp *src) {
   return new tr::NxExp(new tree::MoveStm(dst->UnEx(), src->UnEx()));
 }
 
-temp::Label *makeDoneLabel() { return temp::LabelFactory::NewLabel(); }
-
 tr::Exp *makeWhile(tr::Exp *test, tr::Exp *body, temp::Label *done,
                    err::ErrorMsg *errormsg) {
   auto test_l = temp::LabelFactory::NewLabel();
@@ -473,6 +481,84 @@ tr::Exp *makeWhile(tr::Exp *test, tr::Exp *body, temp::Label *done,
                                     new std::vector<temp::Label *>{test_l}),
                   new tree::LabelStm(done))))));
 }
+
+tr::Exp *makeCall(temp::Label *fun_label, const std::list<tr::Exp *> &args) {
+  auto arg_list = new tree::ExpList();
+  for (auto arg : args) {
+    arg_list->Append(arg->UnEx());
+  }
+  return new tr::ExExp(
+      new tree::CallExp(new tree::NameExp(fun_label), arg_list));
+}
+
+tr::Exp *makeString(temp::Label *str_label) {
+  return new tr::ExExp(new tree::NameExp(str_label));
+}
+
+tr::Exp *makeRecord(const std::vector<tr::Exp *> &field_exps) {
+  std::list<tr::Exp *> init_record_stm{};
+  auto malloc_call = frame::externalCall(
+      "malloc", new tree::ExpList({new tree::ConstExp(init_record_stm.size() *
+                                                      frame::KX64WordSize)}));
+  auto r = temp::TempFactory::NewTemp();
+  auto create_record_stm = new tree::MoveStm(new tree::TempExp(r), malloc_call);
+  init_record_stm.push_back(new tr::NxExp(create_record_stm));
+
+  for (int i = 0; i < field_exps.size(); ++i) {
+    auto init_field_stm =
+        new tree::MoveStm(new tree::MemExp(new tree::BinopExp(
+                              tree::BinOp::PLUS_OP, new tree::TempExp(r),
+                              new tree::ConstExp(i * frame::KX64WordSize))),
+                          field_exps.at(i)->UnEx());
+    init_record_stm.push_back(new tr::NxExp(init_field_stm));
+  }
+  auto flatten_seq_stm = tr::makeSequentialExp(std::move(init_record_stm));
+  return new tr::ExExp(
+      new tree::EseqExp(flatten_seq_stm->UnNx(), new tree::TempExp(r)));
+}
+
+tr::Exp *makeArray(tr::Exp *size, tr::Exp *init) {
+  auto init_call = frame::externalCall(
+      "initArray", new tree::ExpList({size->UnEx(), init->UnEx()}));
+  return new tr::ExExp(init_call);
+}
+
+tr::Exp *Level::prepareStaticLink(tr::Level *level) const {
+  if (level->parent_ == this) {
+    // The function is defined in a nested level, which must satisfies
+    // Lx = Lp + 1 (Lx: callee, Lp: caller). Otherwise, the function is not
+    // visible for the current level.
+    return new tr::ExExp(new tree::TempExp(reg_manager->FramePointer()));
+  }
+  // Lx <= Lp.
+  // Though we can simply pass the frame pointer as the static link,
+  // we may build the static link "statically" at compiler time.
+  // The frame of which we need to get the frame pointer is the lowest common
+  // ancestor of the caller the callee.
+  std::list<tr::Exp *> move_stm_list{};
+  auto r = temp::TempFactory::NewTemp();
+  move_stm_list.push_back(new tr::NxExp(new tree::MoveStm(
+      new tree::TempExp(r),
+      new tree::BinopExp(tree::BinOp::PLUS_OP,
+                         new tree::TempExp(reg_manager->FramePointer()),
+                         new tree::ConstExp(KStaticLinkOffset)))));
+
+  auto cur_level = this;
+  while (cur_level != level->parent_) {
+    assert(cur_level);
+    move_stm_list.push_back(new tr::NxExp(new tree::MoveStm(
+        new tree::TempExp(r),
+        new tree::BinopExp(tree::BinOp::PLUS_OP, new tree::TempExp(r),
+                           new tree::ConstExp(KStaticLinkOffset)))));
+    cur_level = cur_level->parent_;
+  }
+  auto flatten_exp = tr::makeSequentialExp(std::move(move_stm_list));
+  return new tr::ExExp(
+      new tree::EseqExp(flatten_exp->UnNx(), new tree::TempExp(r)));
+}
+
+int tr::Level::KStaticLinkOffset = 0 * frame::KX64WordSize;
+
 } // namespace tr
 
 // Translation is done in the semantic analysis phase of Tiger compiler.
@@ -584,7 +670,9 @@ tr::ExpAndTy *IntExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
 tr::ExpAndTy *StringExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                    tr::Level *level, temp::Label *done,
                                    err::ErrorMsg *errormsg) const {
-  /* TODO: Put your lab5 code here */
+  auto str_l = temp::LabelFactory::NewLabel();
+  frags->PushBack(new frame::StringFrag(str_l, this->str_));
+  return new tr::ExpAndTy(tr::makeString(str_l), type::StringTy::Instance());
 }
 
 tr::ExpAndTy *CallExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
@@ -596,6 +684,15 @@ tr::ExpAndTy *CallExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
 
   auto fun_entry = static_cast<env::FunEntry *>(entry);
   std::list<tr::Exp *> call_args_exp{};
+  // Translate knows that each frame contains a static link. (P144)
+  call_args_exp.push_back(level->prepareStaticLink(fun_entry->level_));
+  for (auto arg : this->args_->GetList()) {
+    auto arg_exp_and_ty = arg->Translate(venv, tenv, level, done, errormsg);
+    call_args_exp.push_back(arg_exp_and_ty->exp_);
+  }
+  auto ret_exp = tr::makeCall(fun_entry->label_, call_args_exp);
+  auto ret_ty = fun_entry->result_;
+  return new tr::ExpAndTy(ret_exp, ret_ty);
 }
 
 tr::ExpAndTy *OpExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
@@ -642,7 +739,24 @@ tr::ExpAndTy *OpExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
 tr::ExpAndTy *RecordExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                    tr::Level *level, temp::Label *done,
                                    err::ErrorMsg *errormsg) const {
-  /* TODO: Put your lab5 code here */
+  // TODO type checking
+  auto entry = tenv->Look(this->typ_);
+  assert(entry && type_check::is_record_type(entry->ActualTy()));
+
+  auto record_ty = static_cast<type::RecordTy *>(entry);
+
+  auto field_list = this->fields_->GetList();
+  std::vector<tr::Exp *> field_exps{};
+
+  // From Tiger manual: The field names and types of the record expression must
+  // match those of the named type, in the order given. (P524)
+  for (auto field : field_list) {
+    auto field_exp_and_ty =
+        field->exp_->Translate(venv, tenv, level, done, errormsg);
+    field_exps.push_back(field_exp_and_ty->exp_);
+  }
+  auto ret_exp = tr::makeRecord(field_exps);
+  return new tr::ExpAndTy(ret_exp, record_ty);
 }
 
 tr::ExpAndTy *SeqExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
@@ -706,7 +820,7 @@ tr::ExpAndTy *WhileExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
   auto test_exp_and_ty =
       this->test_->Translate(venv, tenv, level, done, errormsg);
 
-  done = tr::makeDoneLabel();
+  done = temp::LabelFactory::NewLabel();
 
   auto body_exp_any_ty =
       this->body_->Translate(venv, tenv, level, done, errormsg);
@@ -800,7 +914,18 @@ tr::ExpAndTy *LetExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
 tr::ExpAndTy *ArrayExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                   tr::Level *level, temp::Label *done,
                                   err::ErrorMsg *errormsg) const {
-  /* TODO: Put your lab5 code here */
+  // TODO type-checking
+  auto entry = tenv->Look(this->typ_);
+  assert(entry && type_check::is_array_type(entry->ActualTy()));
+  auto array_ty = static_cast<type::ArrayTy *>(entry);
+
+  auto init_exp_and_ty =
+      this->init_->Translate(venv, tenv, level, done, errormsg);
+  auto size_exp_and_ty =
+      this->size_->Translate(venv, tenv, level, done, errormsg);
+  auto ret_exp = tr::makeArray(size_exp_and_ty->exp_, init_exp_and_ty->exp_);
+
+  return new tr::ExpAndTy(ret_exp, array_ty);
 }
 
 tr::ExpAndTy *VoidExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,

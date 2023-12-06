@@ -55,7 +55,25 @@ class ProgTr;    // Defined below
  * @param level tr::Level
  * @return Exp*
  */
-tr::Exp *makeSimpleVariable(tr::Access *access, tr::Level *level);
+[[nodiscard]] tr::Exp *makeSimpleVariable(tr::Access *access, tr::Level *level);
+
+/**
+ * @brief Smartly make an arithmetical expression or relational CJUMP statement.
+ *
+ * @param oper Oper enum known from the absyn module.
+ * May correspond to tree::BinOp or tree::RelOp.
+ * @param left
+ * @param right
+ * @return tr::Exp*
+ */
+[[nodiscard]] tr::Exp *makeBinaryExp(absyn::Oper oper, tr::Exp *left,
+                                     tr::Exp *right);
+
+[[nodiscard]] tr::Exp *makeSequentialExp(std::list<tr::Exp *> expList);
+
+[[nodiscard]] tr::Exp *makeIfThenElse(tr::Exp *test_e, tr::Exp *then_e,
+                                      tr::Exp *else_e,
+                                      err::ErrorMsg *error_msg);
 
 void procEntryExit(tr::Level *level, tr::Exp *body,
                    const std::list<tr::Access *> &accessList);

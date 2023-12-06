@@ -109,8 +109,7 @@ class ProgTr;    // Defined below
 
 [[nodiscard]] tr::Exp *makeArray(tr::Exp *size, tr::Exp *init);
 
-void procEntryExit(tr::Level *level, tr::Exp *body,
-                   const std::list<tr::Access *> &accessList);
+[[nodiscard]] tr::Exp *makeFunReturn(tr::Exp *body, bool is_procedure);
 
 /**
  * @brief Represents "a list of places where a label must be filled in"
@@ -218,7 +217,7 @@ public:
    * @param formals whether the formals are escaped
    */
   [[nodiscard]] tr::Level *newLevel(temp::Label *name,
-                                    const std::list<bool> &formals) const;
+                                    const std::list<bool> &formals);
 
   /**
    * @brief Get the actual formals of the function.
@@ -226,7 +225,7 @@ public:
    * It will get offsets in the frame (frame::Frame), strip the static link one,
    * and suitably converted into Access values.
    */
-  [[nodiscard]] std::list<Access *> formals() const;
+  [[nodiscard]] std::list<Access *> formals();
 
   /**
    * @brief Get the access of the static link.
@@ -266,6 +265,17 @@ public:
    * @return tr::Level*
    */
   static tr::Level *newBaseLevel(temp::Label *name);
+
+  /**
+   * @brief Called by absyn::FunctionDec#Translate at last.
+   *
+   * This method may patch the body expression, and remember the program
+   * fragment.
+   *
+   * @param body The function body. MOV(RV, body) should be already considered.
+   * @param formals
+   */
+  void procEntryExit(tr::Exp *body, const std::list<tr::Access *> &formals);
 
   frame::Frame *frame_;
   Level *parent_;

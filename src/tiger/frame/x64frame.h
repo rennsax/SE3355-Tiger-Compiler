@@ -101,7 +101,7 @@ public:
 
   frame::Access *allocateLocal(bool escape) override;
 
-  [[nodiscard]] tree::Stm *procEntryExit1(tree::Stm *) const override {}
+  tree::Stm *procEntryExit1(tree::Stm *) const override;
 
   [[nodiscard]] assem::InstrList *
   procEntryExit2(assem::InstrList *body) const override {}

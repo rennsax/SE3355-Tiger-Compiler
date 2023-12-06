@@ -523,6 +523,38 @@ tr::Exp *makeArray(tr::Exp *size, tr::Exp *init) {
   return new tr::ExExp(init_call);
 }
 
+tr::Exp *makeFunReturn(tr::Exp *body, bool is_procedure) {
+  if (is_procedure) {
+    return body;
+  }
+  return new tr::NxExp(new tree::MoveStm(
+      new tree::TempExp(reg_manager->ReturnValue()), body->UnEx()));
+}
+
+tr::Level *Level::newLevel(temp::Label *name, const std::list<bool> &formals) {
+  auto new_Level = new tr::Level();
+  std::list<bool> actual_formals(formals);
+  // The static link must be escaped.
+  actual_formals.push_front(true);
+  new_Level->frame_ = frame::newFrame(name, actual_formals);
+  new_Level->parent_ = this;
+  return new_Level;
+}
+
+std::list<tr::Access *> Level::formals() {
+  std::list<tr::Access *> visible_formals{};
+  auto actual_formals = this->frame_->getFormals();
+  // At least we have static link.
+  assert(actual_formals.size() >= 1);
+
+  transform(next(begin(actual_formals)), end(actual_formals),
+            begin(visible_formals),
+            [this](frame::Access *f_access) -> tr::Access * {
+              return new tr::Access(this, f_access);
+            });
+  return visible_formals;
+}
+
 tr::Exp *Level::prepareStaticLink(tr::Level *level) const {
   if (level->parent_ == this) {
     // The function is defined in a nested level, which must satisfies
@@ -555,6 +587,13 @@ tr::Exp *Level::prepareStaticLink(tr::Level *level) const {
   auto flatten_exp = tr::makeSequentialExp(std::move(move_stm_list));
   return new tr::ExExp(
       new tree::EseqExp(flatten_exp->UnNx(), new tree::TempExp(r)));
+}
+
+void tr::Level::procEntryExit(tr::Exp *body,
+                              const std::list<tr::Access *> &formals) {
+  // Push proc into global list.
+  auto stm1 = this->frame_->procEntryExit1(body->UnNx());
+  frags->PushBack(new frame::ProcFrag(stm1, this->frame_));
 }
 
 int tr::Level::KStaticLinkOffset = 0 * frame::KX64WordSize;
@@ -957,7 +996,67 @@ tr::ExpAndTy *VoidExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
 tr::Exp *FunctionDec::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                 tr::Level *level, temp::Label *done,
                                 err::ErrorMsg *errormsg) const {
-  /* TODO: Put your lab5 code here */
+  // TODO type-checking
+  auto fun_list = this->functions_->GetList();
+
+  // Enter the headers.
+  for (auto fun : fun_list) {
+    // analyze the formals and result
+    auto formals = fun->params_->MakeFormalTyList(tenv, errormsg);
+    std::list<bool> formal_escapes{};
+    for (auto param : fun->params_->GetList()) {
+      formal_escapes.push_back(param->escape_);
+    }
+    auto fun_label = temp::LabelFactory::NamedLabel(fun->name_->Name());
+    // If fun->result_ == nullptr, it declare a **procedure**.
+    auto result_ty =
+        fun->result_ ? tenv->Look(fun->result_) : type::VoidTy::Instance();
+    auto fun_level = level->newLevel(fun_label, formal_escapes);
+    auto fun_entry =
+        new env::FunEntry(fun_level, fun_label, formals, result_ty);
+    // Leave the function body untouched.
+    venv->Enter(fun->name_, fun_entry);
+  }
+
+  for (auto fun : fun_list) {
+    auto entry = venv->Look(fun->name_);
+    assert(entry && type_check::is_fun_entry(entry));
+    auto fun_entry = static_cast<env::FunEntry *>(entry);
+    venv->BeginScope();
+    // Enter the formals
+    {
+      auto param_list = fun->params_->GetList();
+      auto formals = fun_entry->formals_->GetList();
+      auto access_list = fun_entry->level_->formals();
+      assert(param_list.size() == formals.size() &&
+             param_list.size() == access_list.size());
+
+      auto param_it = param_list.begin();
+      auto formal_it = formals.begin();
+      auto access_it = access_list.begin();
+
+      while (param_it != param_list.end()) {
+        venv->Enter((*param_it)->name_,
+                    new env::VarEntry(*access_it, (*formal_it)->ActualTy()));
+        param_it++;
+        formal_it++;
+        access_it++;
+      }
+      assert(formal_it == formals.end() && access_it == access_list.end());
+    }
+
+    auto body_exp_and_ty =
+        fun->body_->Translate(venv, tenv, level, done, errormsg);
+    // body_exps.push_back(body_exp_and_ty->exp_);
+    // body_is_procedures.push_back(fun->result_ == nullptr);
+    bool is_procedure = type_check::is_void_type(fun_entry->result_);
+    auto body_exp = tr::makeFunReturn(body_exp_and_ty->exp_, is_procedure);
+
+    fun_entry->level_->procEntryExit(body_exp, fun_entry->level_->formals());
+
+    venv->EndScope();
+  }
+
   return tr::Exp::no_op();
 }
 

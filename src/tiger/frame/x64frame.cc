@@ -35,7 +35,6 @@ public:
   tree::Exp *toExp(tree::Exp *framePtr) const override {
     // A variable in the register.
     // Independent with the frame pointer, so unused.
-    delete framePtr;
     return new tree::TempExp(reg);
   }
 };
@@ -62,6 +61,11 @@ frame::Access *X64Frame::allocateLocal(bool escape) {
   auto access = new frame::InFrameAccess(offset);
   this->locals_.push_back(access);
   return access;
+}
+
+tree::Stm *X64Frame::procEntryExit1(tree::Stm *stm) const {
+  // TODO dummy implementation
+  return stm;
 }
 
 } // namespace frame

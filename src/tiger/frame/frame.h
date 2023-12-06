@@ -129,7 +129,10 @@ public:
   virtual frame::Access *allocateLocal(bool escape) = 0;
 
   /**
-   * @brief Handle view shift and generate some tree statements.
+   * @brief Handle view shift and combine the tree statements.
+   *
+   * - Moving incoming formal parameter,
+   * - saving and restoring of callee-save register,
    *
    * @return tree::Stm*
    */

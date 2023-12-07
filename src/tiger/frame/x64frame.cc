@@ -1,4 +1,5 @@
 #include "tiger/frame/x64frame.h"
+#include <sstream>
 
 extern frame::RegManager *reg_manager;
 
@@ -66,6 +67,27 @@ frame::Access *X64Frame::allocateLocal(bool escape) {
 tree::Stm *X64Frame::procEntryExit1(tree::Stm *stm) const {
   // TODO dummy implementation
   return stm;
+}
+
+void X64Frame::procEntryExit2(assem::InstrList &body) const {
+  static temp::TempList *returnSink = nullptr;
+  if (!returnSink) {
+    auto callee_savers = reg_manager->CalleeSaves();
+    returnSink = new temp::TempList(*callee_savers);
+    returnSink = new temp::TempList{reg_manager->ReturnValue(),
+                                    reg_manager->StackPointer()};
+  }
+  body.Append(new assem::OperInstr("", nullptr, returnSink, nullptr));
+}
+
+assem::Proc *X64Frame::procEntryExit3(assem::InstrList *body) const {
+  // TODO dummy implementation
+  std::stringstream prologue_ss{}, epilogue_ss{};
+  prologue_ss << temp::LabelFactory::LabelString(this->name_);
+
+  endl(prologue_ss);
+  endl(epilogue_ss);
+  return new assem::Proc(prologue_ss.str(), body, epilogue_ss.str());
 }
 
 } // namespace frame

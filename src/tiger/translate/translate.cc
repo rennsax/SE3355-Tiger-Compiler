@@ -550,12 +550,12 @@ tr::Exp *makeStringEqual(tr::Exp *str1, tr::Exp *str2) {
 }
 
 tr::Level *Level::newLevel(temp::Label *name, const std::list<bool> &formals) {
-  auto new_Level = new tr::Level();
   std::list<bool> actual_formals(formals);
   // The static link must be escaped.
   actual_formals.push_front(true);
-  new_Level->frame_ = frame::newFrame(name, actual_formals);
-  new_Level->parent_ = this;
+  auto new_frame = frame::newFrame(name, actual_formals);
+  auto new_Level = new tr::Level(new_frame, this);
+
   return new_Level;
 }
 
@@ -614,7 +614,7 @@ void tr::Level::procEntryExit(tr::Exp *body,
   frags->PushBack(new frame::ProcFrag(stm1, this->frame_));
 }
 
-int tr::Level::KStaticLinkOffset = 0 * frame::KX64WordSize;
+const int tr::Level::KStaticLinkOffset = 0 * frame::KX64WordSize;
 
 } // namespace tr
 

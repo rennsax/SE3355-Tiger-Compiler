@@ -189,6 +189,12 @@ struct Access {
  *
  */
 class Level {
+  // The function need to handle static link, so mark it as a friend to make it
+  // accessible to #parent_.
+  friend tr::Exp *tr::makeSimpleVariable(tr::Access *access, tr::Level *level);
+  friend tr::Exp *makeSimpleVariable(tr::Access *access, tr::Level *level,
+                                     tree::Exp *framePointer);
+
 public:
   /**
    * @brief Create a nesting level.
@@ -285,19 +291,20 @@ public:
    */
   void procEntryExit(tr::Exp *body, const std::list<tr::Access *> &formals);
 
-  frame::Frame *frame_;
-  Level *parent_;
-
   // In byte
-  static int KStaticLinkOffset;
+  static const int KStaticLinkOffset;
 
 private:
+  frame::Frame *frame_;
+  Level *parent_;
   /**
    * @brief The constructor is only called when creating the "main" level.
    * All nesting levels should be created by calling Level::newLevel.
    *
    */
   Level() = default;
+
+  Level(frame::Frame *frame, Level *parent) : frame_(frame), parent_(parent) {}
 };
 
 class ProgTr {

@@ -36,7 +36,7 @@ public:
    * @param reg_idx
    * @return temp::Temp*
    */
-  temp::Temp *GetRegister(int reg_idx) const { return regs_[reg_idx]; }
+  virtual temp::Temp *GetRegister(int reg_idx) const = 0;
 
   /**
    * Get general-purpose registers except RSI
@@ -80,10 +80,7 @@ public:
 
   [[nodiscard]] virtual temp::Temp *ReturnValue() = 0;
 
-  temp::Map *temp_map_;
-
-protected:
-  std::vector<temp::Temp *> regs_;
+  temp::Map *temp_map_; // Used in output.cc, cannot be concealed.
 };
 
 class Access {
@@ -148,14 +145,18 @@ public:
    * @param body The function body.
    * @return assem::InstrList* Point to the list itself in fact.
    */
-  [[nodiscard]] virtual assem::InstrList *
-  procEntryExit2(assem::InstrList *body) const = 0;
+  virtual void procEntryExit2(assem::InstrList &body) const = 0;
 
   /**
-   * @brief Generate the prologue.
+   * @brief Creates the procedure prologue and epilogue assembly language.
    *
-   * The prologue need to include a definition of the assembly-language constant
-   * @c framesize.
+   * The prologue includes a definition of the assembly-language constant
+   * which denotes the frame size.
+   *
+   * (P269)
+   * First, it calculates the size of the outgoing parameter space in the frame.
+   * It's not obvious at this time, so we let #procEntryExit2 to scan the body
+   * and record this information.
    *
    * The implementation is time-wasting, but it permits the frame size to grow
    * and shrink even after it is first created.
@@ -167,12 +168,7 @@ public:
 
   virtual std::string GetLabel() const = 0;
 
-  const std::list<frame::Access *> &getFormals() const { return formals_; }
-
-protected:
-  std::list<frame::Access *> formals_;
-  std::list<frame::Access *> locals_;
-  temp::Label *name_;
+  virtual const std::list<frame::Access *> &getFormals() const = 0;
 };
 
 /**

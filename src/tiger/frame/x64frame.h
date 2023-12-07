@@ -42,6 +42,8 @@ class X64RegManager : public RegManager {
 public:
   X64RegManager();
 
+  temp::Temp *GetRegister(int reg_idx) const override { return regs_[reg_idx]; }
+
 #define REGISTER(sym) (regs_.at(static_cast<std::size_t>(Register::sym)))
   temp::TempList *Registers() override {
     auto res = new temp::TempList{};
@@ -91,6 +93,9 @@ public:
   temp::Temp *StackPointer() override { return REGISTER(RBP); }
   temp::Temp *ReturnValue() override { return REGISTER(RAX); }
 #undef REGISTER
+
+private:
+  std::vector<temp::Temp *> regs_;
 };
 
 class X64Frame : public Frame {
@@ -103,13 +108,20 @@ public:
 
   tree::Stm *procEntryExit1(tree::Stm *) const override;
 
-  [[nodiscard]] assem::InstrList *
-  procEntryExit2(assem::InstrList *body) const override {}
+  void procEntryExit2(assem::InstrList &body) const override;
 
-  [[nodiscard]] assem::Proc *procEntryExit3(assem::InstrList *) const override {
-  }
+  [[nodiscard]] assem::Proc *procEntryExit3(assem::InstrList *) const override;
 
   virtual std::string GetLabel() const override { return this->name_->Name(); }
+
+  const std::list<frame::Access *> &getFormals() const override {
+    return formals_;
+  }
+
+private:
+  std::list<frame::Access *> formals_;
+  std::list<frame::Access *> locals_;
+  temp::Label *name_;
 };
 
 } // namespace frame

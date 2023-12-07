@@ -89,8 +89,8 @@ public:
     // TODO return sink?
     return nullptr;
   }
-  temp::Temp *FramePointer() override { return REGISTER(RSP); }
-  temp::Temp *StackPointer() override { return REGISTER(RBP); }
+  temp::Temp *FramePointer() override { return REGISTER(RBP); }
+  temp::Temp *StackPointer() override { return REGISTER(RSP); }
   temp::Temp *ReturnValue() override { return REGISTER(RAX); }
 #undef REGISTER
 

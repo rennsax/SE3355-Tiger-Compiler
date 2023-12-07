@@ -531,6 +531,15 @@ tr::Exp *makeFunReturn(tr::Exp *body, bool is_procedure) {
       new tree::TempExp(reg_manager->ReturnValue()), body->UnEx()));
 }
 
+tr::Exp *makeDirectJump(temp::Label *target) {
+  return new tr::NxExp(new tree::JumpStm(
+      new tree::NameExp(target), new std::vector<temp::Label *>{target}));
+}
+
+tr::Exp *makeNil() { return tr::makeConstant(0); }
+
+tr::Exp *makeConstant(int i) { return new tr::ExExp(new tree::ConstExp(i)); }
+
 tr::Level *Level::newLevel(temp::Label *name, const std::list<bool> &formals) {
   auto new_Level = new tr::Level();
   std::list<bool> actual_formals(formals);
@@ -695,14 +704,13 @@ tr::ExpAndTy *VarExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
 tr::ExpAndTy *NilExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                 tr::Level *level, temp::Label *done,
                                 err::ErrorMsg *errormsg) const {
-  return new tr::ExpAndTy(new tr::ExExp(new tree::ConstExp(0)),
-                          type::NilTy::Instance());
+  return new tr::ExpAndTy(tr::makeNil(), type::NilTy::Instance());
 }
 
 tr::ExpAndTy *IntExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                 tr::Level *level, temp::Label *done,
                                 err::ErrorMsg *errormsg) const {
-  return new tr::ExpAndTy(new tr::ExExp(new tree::ConstExp(this->val_)),
+  return new tr::ExpAndTy(tr::makeConstant(this->val_),
                           type::IntTy::Instance());
 }
 
@@ -930,10 +938,7 @@ tr::ExpAndTy *BreakExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
     errormsg->Error(this->pos_, "break is not inside any loop");
     return tr::ExpAndTy::dummy();
   }
-  return new tr::ExpAndTy(
-      new tr::NxExp(new tree::JumpStm(new tree::NameExp(done),
-                                      new std::vector<temp::Label *>{done})),
-      type::VoidTy::Instance());
+  return new tr::ExpAndTy(tr::makeDirectJump(done), type::VoidTy::Instance());
 }
 
 tr::ExpAndTy *LetExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
@@ -1096,8 +1101,7 @@ tr::Exp *VarDec::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
   venv->Enter(this->var_, new env::VarEntry(access, init_ty));
 
   // Initialization action.
-  auto init_exp = new tr::NxExp(
-      new tree::MoveStm(dst_exp->UnEx(), init_exp_and_ty->exp_->UnEx()));
+  auto init_exp = tr::makeAssignment(dst_exp, init_exp_and_ty->exp_);
   return init_exp;
 }
 

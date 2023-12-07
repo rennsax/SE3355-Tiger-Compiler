@@ -111,6 +111,12 @@ class ProgTr;    // Defined below
 
 [[nodiscard]] tr::Exp *makeFunReturn(tr::Exp *body, bool is_procedure);
 
+[[nodiscard]] tr::Exp *makeDirectJump(temp::Label *target);
+
+[[nodiscard]] tr::Exp *makeNil();
+
+[[nodiscard]] tr::Exp *makeConstant(int i);
+
 /**
  * @brief Represents "a list of places where a label must be filled in"
  *
@@ -299,8 +305,8 @@ public:
       : absyn_tree_{std::move(ast)}, errormsg_{std::move(error)},
         tenv_{std::make_unique<env::TEnv>()},
         venv_{std::make_unique<env::VEnv>()},
-        main_level_(
-            tr::Level::newBaseLevel(temp::Label::UniqueSymbol("Tiger main"))) {}
+        main_level_(tr::Level::newBaseLevel(
+            temp::Label::UniqueSymbol("__Tiger_main__"))) {}
 
   /**
    * Translate IR tree

@@ -117,6 +117,8 @@ class ProgTr;    // Defined below
 
 [[nodiscard]] tr::Exp *makeConstant(int i);
 
+[[nodiscard]] tr::Exp *makeStringEqual(tr::Exp *str1, tr::Exp *str2);
+
 /**
  * @brief Represents "a list of places where a label must be filled in"
  *
@@ -304,9 +306,7 @@ public:
          std::unique_ptr<err::ErrorMsg> error)
       : absyn_tree_{std::move(ast)}, errormsg_{std::move(error)},
         tenv_{std::make_unique<env::TEnv>()},
-        venv_{std::make_unique<env::VEnv>()},
-        main_level_(tr::Level::newBaseLevel(
-            temp::Label::UniqueSymbol("__Tiger_main__"))) {}
+        venv_{std::make_unique<env::VEnv>()}, main_level_() {}
 
   /**
    * Translate IR tree

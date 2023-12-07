@@ -39,6 +39,7 @@ constexpr auto is_int_type = is_d_type<type::IntTy>{};
 constexpr auto is_name_type = is_d_type<type::NameTy>{};
 constexpr auto is_array_type = is_d_type<type::ArrayTy>{};
 constexpr auto is_record_type = is_d_type<type::RecordTy>{};
+constexpr auto is_str_type = is_d_type<type::StringTy>{};
 constexpr auto is_nil_type = is_d_type<type::NilTy>{};
 constexpr auto is_fun_entry = is_d_entry<env::FunEntry>{};
 constexpr auto is_var_entry = is_d_entry<env::VarEntry>{};
@@ -289,6 +290,8 @@ Exp *Exp::no_op() { return new tr::ExExp(new tree::ConstExp(0)); }
 void ProgTr::Translate() {
   FillBaseTEnv();
   FillBaseVEnv();
+  this->main_level_ = std::unique_ptr<tr::Level>{
+      tr::Level::newBaseLevel(temp::Label::UniqueSymbol("tigermain"))};
   auto exp_and_ty = this->absyn_tree_->Translate(
       this->venv_.get(), this->tenv_.get(), this->main_level_.get(), nullptr,
       errormsg_.get());
@@ -498,8 +501,8 @@ tr::Exp *makeString(temp::Label *str_label) {
 tr::Exp *makeRecord(const std::vector<tr::Exp *> &field_exps) {
   std::list<tr::Exp *> init_record_stm{};
   auto malloc_call = frame::externalCall(
-      "malloc", new tree::ExpList({new tree::ConstExp(init_record_stm.size() *
-                                                      frame::KX64WordSize)}));
+      "alloc_record",
+      new tree::ExpList({new tree::ConstExp(init_record_stm.size())}));
   auto r = temp::TempFactory::NewTemp();
   auto create_record_stm = new tree::MoveStm(new tree::TempExp(r), malloc_call);
   init_record_stm.push_back(new tr::NxExp(create_record_stm));
@@ -519,7 +522,7 @@ tr::Exp *makeRecord(const std::vector<tr::Exp *> &field_exps) {
 
 tr::Exp *makeArray(tr::Exp *size, tr::Exp *init) {
   auto init_call = frame::externalCall(
-      "initArray", new tree::ExpList({size->UnEx(), init->UnEx()}));
+      "init_array", new tree::ExpList({size->UnEx(), init->UnEx()}));
   return new tr::ExExp(init_call);
 }
 
@@ -539,6 +542,12 @@ tr::Exp *makeDirectJump(temp::Label *target) {
 tr::Exp *makeNil() { return tr::makeConstant(0); }
 
 tr::Exp *makeConstant(int i) { return new tr::ExExp(new tree::ConstExp(i)); }
+
+tr::Exp *makeStringEqual(tr::Exp *str1, tr::Exp *str2) {
+  auto args = new tree::ExpList{str1->UnEx(), str2->UnEx()};
+  auto exp = frame::externalCall("string_equal", args);
+  return new tr::ExExp(exp);
+}
 
 tr::Level *Level::newLevel(temp::Label *name, const std::list<bool> &formals) {
   auto new_Level = new tr::Level();
@@ -760,7 +769,20 @@ tr::ExpAndTy *OpExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
   case Oper::NEQ_OP:
     if (!type_check::is_same_d_type(lhs_ty, rhs_ty)) {
       errormsg->Error(this->pos_, "same type required");
+      return tr::ExpAndTy::dummy();
     }
+    if (type_check::is_str_type(lhs_ty->ActualTy())) {
+      if (this->oper_ == Oper::EQ_OP) {
+        return new tr::ExpAndTy(
+            tr::makeStringEqual(left_exp_and_ty->exp_, right_exp_and_ty->exp_),
+            type::StringTy::Instance());
+      }
+      auto newAbsynExp = new absyn::OpExp(
+          0, Oper::MINUS_OP, new absyn::IntExp(0, 1),
+          new absyn::OpExp(0, Oper::EQ_OP, this->left_, this->right_));
+      return newAbsynExp->Translate(venv, tenv, level, done, errormsg);
+    }
+    // str1 != str2   =>  1 - (str1 == str2)
     break;
   case Oper::PLUS_OP:
   case Oper::MINUS_OP:
@@ -772,6 +794,7 @@ tr::ExpAndTy *OpExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
   case Oper::GT_OP:
     if (!(type_check::is_int_type(lhs_ty) && type_check::is_int_type(rhs_ty))) {
       errormsg->Error(this->pos_, "integer required");
+      return tr::ExpAndTy::dummy();
     }
   default:
     // TODO check more?

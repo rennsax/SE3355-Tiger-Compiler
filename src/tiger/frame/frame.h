@@ -128,8 +128,14 @@ public:
   /**
    * @brief Handle view shift and combine the tree statements.
    *
+   * The tasks:
    * - Moving incoming formal parameter,
    * - saving and restoring of callee-save register,
+   *
+   * Implementation (P267):
+   * Allocate locals according to the formals when the new frame is created,
+   * and generate some IR statements, which are kept by the frame itself.
+   * #procEntryExit1 just concatenate them and return it.
    *
    * @return tree::Stm*
    */
@@ -139,11 +145,11 @@ public:
    * @brief Append a "sink" instruction.
    *
    * (P215)
-   * This function appends a "sink" instruction to the function body to tell the
-   * register allocator that certain registers are live at procedure exit.
+   * This function appends a pseudo "sink" instruction to the function body to
+   * tell the register allocator that certain registers are "live" at procedure
+   * exit.
    *
    * @param body The function body.
-   * @return assem::InstrList* Point to the list itself in fact.
    */
   virtual void procEntryExit2(assem::InstrList &body) const = 0;
 
@@ -157,9 +163,13 @@ public:
    * First, it calculates the size of the outgoing parameter space in the frame.
    * It's not obvious at this time, so we let #procEntryExit2 to scan the body
    * and record this information.
-   *
    * The implementation is time-wasting, but it permits the frame size to grow
    * and shrink even after it is first created.
+   *
+   * The following instructions should be generated:
+   * - Adjust the stack pointer (prologue).
+   * - Reset the stack pointer (epilogue).
+   * - Return (epilogue).
    *
    * @return assem::Proc*
    */

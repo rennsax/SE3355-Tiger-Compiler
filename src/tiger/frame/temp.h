@@ -94,6 +94,7 @@ class TempList {
 public:
   explicit TempList(Temp *t) : temp_list_({t}) {}
   TempList(std::initializer_list<Temp *> list) : temp_list_(list) {}
+  TempList(const std::list<Temp *> &others) : temp_list_(others) {}
   TempList() = default;
   void Append(Temp *t) { temp_list_.push_back(t); }
   [[nodiscard]] Temp *NthTemp(int i) const;

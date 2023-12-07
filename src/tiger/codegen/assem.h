@@ -107,6 +107,7 @@ public:
   void Insert(std::list<Instr *>::const_iterator pos, assem::Instr *instr) {
     instr_list_.insert(pos, instr);
   }
+  void Prepend(assem::Instr *instr) { instr_list_.push_front(instr); }
   [[nodiscard]] const std::list<Instr *> &GetList() const {
     return instr_list_;
   }

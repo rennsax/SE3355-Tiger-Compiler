@@ -86,8 +86,14 @@ public:
     return res;
   }
   temp::TempList *ReturnSink() override {
-    // TODO return sink?
-    return nullptr;
+    static temp::TempList *returnSink = nullptr;
+    if (!returnSink) {
+      auto callee_savers = this->CalleeSaves();
+      returnSink = new temp::TempList(*callee_savers);
+      returnSink =
+          new temp::TempList{this->ReturnValue(), this->StackPointer()};
+    }
+    return returnSink;
   }
   temp::Temp *FramePointer() override { return REGISTER(RBP); }
   temp::Temp *StackPointer() override { return REGISTER(RSP); }
@@ -120,8 +126,12 @@ public:
 
 private:
   std::list<frame::Access *> formals_;
-  std::list<frame::Access *> locals_;
+  // std::list<frame::Access *> locals_;
   temp::Label *name_;
+  tree::Stm *view_shift_stm_;
+  // Where the new-allocated local goes
+  // The number factually equals to the frame size for all locals.
+  std::size_t neg_local_offset_;
 };
 
 } // namespace frame

@@ -45,11 +45,46 @@ frame::Frame *newFrame(temp::Label *f, const std::list<bool> &formals) {
   return x64_frame;
 }
 
-X64Frame::X64Frame(temp::Label *label, const std::list<bool> &formals) {
-  this->name_ = label;
-  for (auto escape : formals) {
-    auto formal = this->allocateLocal(escape);
-    this->formals_.push_back(formal);
+X64Frame::X64Frame(temp::Label *label, const std::list<bool> &formals)
+    : name_(label), neg_local_offset_(0), view_shift_stm_(nullptr) {
+
+  auto arg_regs = reg_manager->ArgRegs();
+  auto arg_reg_cnt = arg_regs->GetList().size();
+  std::list<tree::Stm *> stm_list{};
+
+  auto escape_it = begin(formals);
+  for (int i = 0; i < std::min(arg_reg_cnt, formals.size());
+       ++i, next(escape_it)) {
+
+    assert(escape_it != end(formals));
+
+    auto formal_access = this->allocateLocal(true); // X86 stack
+    stm_list.push_back(new tree::MoveStm(
+        formal_access->toExp(new tree::TempExp(reg_manager->FramePointer())),
+        new tree::TempExp(arg_regs->NthTemp(i))));
+
+    this->formals_.push_back(formal_access);
+  }
+
+  for (int offset = 16; escape_it != end(formals);
+       next(escape_it), offset += KX64WordSize) {
+    auto formal_access = new InFrameAccess(offset);
+    this->formals_.push_back(formal_access);
+  }
+
+  // 8(%rbp): return address (not used).
+  // (%rbp): previous %rbp value. Let #procEntryExit3 handles it.
+
+  // Combine all statements.
+  if (stm_list.empty()) {
+    return;
+  }
+  this->view_shift_stm_ = stm_list.back();
+  stm_list.pop_back();
+  while (!stm_list.empty()) {
+    auto stm = stm_list.back();
+    stm_list.pop_back();
+    this->view_shift_stm_ = new tree::SeqStm(stm, this->view_shift_stm_);
   }
 }
 
@@ -58,32 +93,85 @@ frame::Access *X64Frame::allocateLocal(bool escape) {
     auto temp = temp::TempFactory::NewTemp();
     return new frame::InRegAccess(temp);
   }
-  int offset = -KX64WordSize * this->locals_.size();
-  auto access = new frame::InFrameAccess(offset);
-  this->locals_.push_back(access);
+  this->neg_local_offset_ += KX64WordSize;
+  auto access = new frame::InFrameAccess(-this->neg_local_offset_);
   return access;
 }
 
 tree::Stm *X64Frame::procEntryExit1(tree::Stm *stm) const {
-  // TODO dummy implementation
-  return stm;
+  return new tree::SeqStm(this->view_shift_stm_, stm);
 }
 
 void X64Frame::procEntryExit2(assem::InstrList &body) const {
-  static temp::TempList *returnSink = nullptr;
-  if (!returnSink) {
-    auto callee_savers = reg_manager->CalleeSaves();
-    returnSink = new temp::TempList(*callee_savers);
-    returnSink = new temp::TempList{reg_manager->ReturnValue(),
-                                    reg_manager->StackPointer()};
-  }
-  body.Append(new assem::OperInstr("", nullptr, returnSink, nullptr));
+  body.Append(
+      new assem::OperInstr("", nullptr, reg_manager->ReturnSink(), nullptr));
 }
 
 assem::Proc *X64Frame::procEntryExit3(assem::InstrList *body) const {
-  // TODO dummy implementation
+
   std::stringstream prologue_ss{}, epilogue_ss{};
   prologue_ss << temp::LabelFactory::LabelString(this->name_);
+
+  {
+    /**
+     * Adjust stack pointer.
+     */
+    auto rsp = reg_manager->StackPointer();
+    std::stringstream ss{};
+    ss << "subq $" << this->neg_local_offset_ << ", `d0";
+    body->Prepend(new assem::OperInstr(ss.str(), new temp::TempList{rsp},
+                                       new temp::TempList{rsp}, nullptr));
+  }
+
+  {
+    /**
+     * Prepend something equivalent to:
+     * pushq %rbp  ; => subq $8, %rsp
+     *             ;    movq %rbp, (%rsp)
+     * movq %rsp, %rbp
+     *
+     */
+    auto rsp = reg_manager->GetRegister(static_cast<int>(Register::RSP));
+    auto rbp = reg_manager->GetRegister(static_cast<int>(Register::RBP));
+    body->Prepend(new assem::MoveInstr("movq `s0, `d0", new temp::TempList(rbp),
+                                       new temp::TempList(rsp)));
+
+    body->Prepend(new assem::OperInstr("movq `s0, (`s1)", nullptr,
+                                       new temp::TempList{rbp, rsp}, nullptr));
+
+    std::stringstream ss{};
+    ss << "subq $" << KX64WordSize << ", `d0";
+    body->Prepend(new assem::OperInstr(ss.str(), new temp::TempList{rsp},
+                                       new temp::TempList{rsp}, nullptr));
+  }
+
+  {
+    /**
+     * Restore the stack pointer.
+     * Append something equivalent to:
+     * leave ; => movq %rbp, %rsp
+     *       ;    popq %rbp        ; => movq (%rsp), %rbp
+     *       ;                     ; => addq $8, %rsp
+     */
+    auto rsp = reg_manager->StackPointer();
+    auto rbp = reg_manager->FramePointer();
+
+    body->Append(new assem::MoveInstr("movq `s0, `d0", new temp::TempList(rsp),
+                                      new temp::TempList(rbp)));
+    body->Append(new assem::OperInstr("movq (`s0), `s1", nullptr,
+                                      new temp::TempList{rsp, rbp}, nullptr));
+    std::stringstream ss{};
+    ss << "addq $" << KX64WordSize << ", `d0";
+    body->Append(new assem::OperInstr(ss.str(), new temp::TempList{rsp},
+                                      new temp::TempList{rsp}, nullptr));
+  }
+
+  {
+    // Return
+    auto rax = reg_manager->GetRegister(static_cast<int>(Register::RAX));
+    body->Append(new assem::OperInstr("retq", nullptr, new temp::TempList{rax},
+                                      nullptr));
+  }
 
   endl(prologue_ss);
   endl(epilogue_ss);

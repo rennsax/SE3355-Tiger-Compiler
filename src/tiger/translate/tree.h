@@ -287,6 +287,27 @@ public:
    */
   virtual temp::Temp *Munch(assem::InstrList &instr_list,
                             std::string_view fs) = 0;
+
+  struct MaybeConst;
+
+  /**
+   * @brief Help function of munching. Check if the Exp is const, and return a
+   * variant version of the munching result.
+   *
+   * @param instr_list
+   * @param fs
+   * @param is_volatile Whether the context may modify the content in the
+   * register, if any. The option determines whether the utility could return
+   * the register itself if the Exp is of type TempExp, without moving it to a
+   * fresh register. Default to true since it's always safe to protect the
+   * content in registers.
+   *
+   * @return MaybeConst
+   */
+  virtual MaybeConst MunchIfConst(assem::InstrList &instr_list,
+                                  std::string_view fs, bool is_volatile);
+  virtual MaybeConst MunchIfConst(assem::InstrList &instr_list,
+                                  std::string_view fs);
 };
 
 class BinopExp : public Exp {
@@ -340,6 +361,20 @@ public:
   void Print(FILE *out, int d) const override;
   canon::StmAndExp Canon() override;
   temp::Temp *Munch(assem::InstrList &instr_list, std::string_view fs) override;
+
+  /**
+   * @brief Munch the MEM expression, try the best to use less registers.
+   *
+   * There are two cases when the method is useful:
+   * - MemExp is used as the dst of MoveStm.
+   * - would like to use a simpler operand, lowering waste of registers.
+   *
+   * @param instr_list
+   * @param fs
+   * @return Unspecified
+   */
+  template <typename _ReturnTy>
+  _ReturnTy MunchInMemory(assem::InstrList &instr_list, std::string_view fs);
 };
 
 class TempExp : public Exp {
@@ -360,6 +395,10 @@ public:
   void Print(FILE *out, int d) const override;
   canon::StmAndExp Canon() override;
   temp::Temp *Munch(assem::InstrList &instr_list, std::string_view fs) override;
+
+  virtual MaybeConst MunchIfConst(assem::InstrList &instr_list,
+                                  std::string_view fs,
+                                  bool is_volatile = false) override;
 };
 
 class EseqExp : public Exp {
@@ -415,6 +454,10 @@ public:
   void Print(FILE *out, int d) const override;
   canon::StmAndExp Canon() override;
   temp::Temp *Munch(assem::InstrList &instr_list, std::string_view fs) override;
+
+  virtual MaybeConst MunchIfConst(assem::InstrList &instr_list,
+                                  std::string_view fs,
+                                  bool is_volatile) override;
 };
 
 class CallExp : public Exp {

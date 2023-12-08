@@ -97,6 +97,11 @@ public:
   TempList(const std::list<Temp *> &others) : temp_list_(others) {}
   TempList() = default;
   void Append(Temp *t) { temp_list_.push_back(t); }
+  void Concat(TempList *tail) {
+    for (auto temp : tail->GetList()) {
+      this->Append(temp);
+    }
+  }
   [[nodiscard]] Temp *NthTemp(int i) const;
   [[nodiscard]] const std::list<Temp *> &GetList() const { return temp_list_; }
 

@@ -456,6 +456,7 @@ temp::Temp *ConstExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
   auto r = temp::TempFactory::NewTemp();
   std::stringstream ss{};
   ss << "movq $" << this->consti_ << ", `d0";
+  // Yes, it's oper, not move
   instr_list.Append(new assem::OperInstr(ss.str(), new temp::TempList({r}),
                                          nullptr, nullptr));
   return r;
@@ -464,7 +465,8 @@ temp::Temp *ConstExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
 temp::Temp *CallExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
   assert(typeid(*this->fun_) == typeid(tree::NameExp));
 
-  auto r = reg_manager->ReturnValue();
+  auto r = temp::TempFactory::NewTemp();
+  auto rv = reg_manager->ReturnValue();
   auto args = this->args_->MunchArgs(instr_list, fs);
 
   auto instr_str =
@@ -472,7 +474,7 @@ temp::Temp *CallExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
                      static_cast<tree::NameExp *>(this->fun_)->name_);
 
   instr_list.Append(
-      new assem::OperInstr(instr_str, new temp::TempList({r}), args, nullptr));
+      new assem::OperInstr(instr_str, new temp::TempList({rv}), args, nullptr));
 
   auto outgoing_cnt = size(this->args_->GetList());
   auto arg_reg_cnt = size(reg_manager->ArgRegs()->GetList());
@@ -486,6 +488,10 @@ temp::Temp *CallExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
     instr_list.Append(new assem::OperInstr(ss.str(), new temp::TempList{rsp},
                                            new temp::TempList{rsp}, nullptr));
   }
+
+  // The responsibility to move the result to a fresh register.
+  instr_list.Append(new assem::MoveInstr("movq `s0, `d0", new temp::TempList{r},
+                                         new temp::TempList{rv}));
 
   return r;
 }

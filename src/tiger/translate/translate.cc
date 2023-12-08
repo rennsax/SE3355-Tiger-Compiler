@@ -697,7 +697,8 @@ tr::ExpAndTy *FieldVar::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
     errormsg->Error(this->pos_, "not a record type");
     return tr::ExpAndTy::dummy();
   }
-  auto field_list = static_cast<type::RecordTy *>(var_ty)->fields_->GetList();
+  auto field_list =
+      static_cast<type::RecordTy *>(var_ty->ActualTy())->fields_->GetList();
   auto found_field_it = std::find_if(
       field_list.begin(), field_list.end(), [this](type::Field *field) -> bool {
         return field->name_->Name() == this->sym_->Name();

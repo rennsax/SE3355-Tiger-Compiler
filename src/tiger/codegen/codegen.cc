@@ -158,7 +158,7 @@ auto MemExp::MunchInMemory(assem::InstrList &instr_list, std::string_view fs)
     }
     if (rhs.is_const) {
       std::stringstream ss{};
-      if (lhs.u.val != 0) {
+      if (rhs.u.val != 0) {
         ss << rhs.u.val;
       }
       ss << "(`s0)";

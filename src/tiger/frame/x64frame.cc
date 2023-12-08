@@ -105,6 +105,48 @@ tree::Stm *X64Frame::procEntryExit1(tree::Stm *stm) const {
 }
 
 void X64Frame::procEntryExit2(assem::InstrList &body) const {
+  // Remove redundant jump statements.
+  // TODO count zero-ref label?
+  auto instr_list = body.GetList();
+  std::list<assem::Instr *> to_remove{};
+  for (auto it = begin(instr_list); it != end(instr_list); ++it) {
+    if (next(it) == end(instr_list)) {
+      continue;
+      // if (typeid(*it) == typeid(assem::LabelInstr)) {
+      //   to_remove.push_back(*it);
+      // }
+    }
+    auto cur_instr = *it;
+    if (typeid(*cur_instr) != typeid(assem::OperInstr)) {
+      continue;
+    }
+    auto op_instr = static_cast<assem::OperInstr *>(cur_instr);
+    if (op_instr->jumps_ == nullptr) {
+      continue;
+    }
+    if (op_instr->assem_.compare(0, 3, "jmp") != 0) {
+      continue;
+    }
+    assert(op_instr->jumps_);
+    assert(op_instr->jumps_->labels_->size() == 1);
+    auto target = op_instr->jumps_->labels_->front();
+    auto next_instr = *next(it);
+    if (typeid(*next_instr) != typeid(assem::LabelInstr)) {
+      continue;
+    }
+    auto next_label = static_cast<assem::LabelInstr *>(next_instr)->label_;
+    if (target == next_label) {
+      to_remove.push_back(cur_instr);
+    }
+  }
+  printf("--------------------------------\n[ProcEntryExit2] eliminate "
+         "following instructions\n");
+  for (auto instr : to_remove) {
+    instr->Print(stdout, nullptr);
+    body.Remove(instr);
+  }
+  printf("--------------------------------\n");
+
   body.Append(
       new assem::OperInstr("", nullptr, reg_manager->ReturnSink(), nullptr));
 }

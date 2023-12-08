@@ -247,7 +247,7 @@ public:
    * @return frame::Access* No need to use tr::Access because to get the static
    * link itself there is no need to follow some static links.
    */
-  [[deprecated]] frame::Access *stackLink() const;
+  frame::Access *stackLink() const;
 
   /**
    * @brief Prepare the static link, which will be passed for calling the

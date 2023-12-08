@@ -328,9 +328,7 @@ tr::Exp *makeSimpleVariable(tr::Access *access, tr::Level *level,
 
   // Get the static link, which is the frame pointer of the next level.
   assert(level->parent_);
-  auto fp_new = new tree::MemExp(
-      new tree::BinopExp(tree::BinOp::PLUS_OP, framePointer,
-                         new tree::ConstExp(-Level::KStaticLinkOffset)));
+  auto fp_new = level->stackLink()->toExp(framePointer);
   return makeSimpleVariable(access, level->parent_, fp_new);
 }
 
@@ -535,8 +533,8 @@ tr::Exp *makeString(temp::Label *str_label) {
 tr::Exp *makeRecord(const std::vector<tr::Exp *> &field_exps) {
   std::list<tr::Exp *> init_record_stm{};
   auto malloc_call = frame::externalCall(
-      "alloc_record",
-      new tree::ExpList({new tree::ConstExp(field_exps.size())}));
+      "alloc_record", new tree::ExpList({new tree::ConstExp(
+                          field_exps.size() * frame::KX64WordSize)}));
   auto r = temp::TempFactory::NewTemp();
   auto create_record_stm = new tree::MoveStm(new tree::TempExp(r), malloc_call);
   init_record_stm.push_back(new tr::NxExp(create_record_stm));
@@ -625,17 +623,17 @@ tr::Exp *Level::prepareStaticLink(tr::Level *level) const {
   auto r = temp::TempFactory::NewTemp();
   move_stm_list.push_back(new tr::NxExp(new tree::MoveStm(
       new tree::TempExp(r),
-      new tree::BinopExp(tree::BinOp::PLUS_OP,
-                         new tree::TempExp(reg_manager->FramePointer()),
-                         new tree::ConstExp(KStaticLinkOffset)))));
+      new tree::MemExp(new tree::BinopExp(
+          tree::BinOp::PLUS_OP, new tree::TempExp(reg_manager->FramePointer()),
+          new tree::ConstExp(KStaticLinkOffset))))));
 
-  auto cur_level = this;
+  auto cur_level = this->parent_;
   while (cur_level != level->parent_) {
     assert(cur_level);
     move_stm_list.push_back(new tr::NxExp(new tree::MoveStm(
-        new tree::TempExp(r),
-        new tree::BinopExp(tree::BinOp::PLUS_OP, new tree::TempExp(r),
-                           new tree::ConstExp(KStaticLinkOffset)))));
+        new tree::TempExp(r), new tree::MemExp(new tree::BinopExp(
+                                  tree::BinOp::PLUS_OP, new tree::TempExp(r),
+                                  new tree::ConstExp(KStaticLinkOffset))))));
     cur_level = cur_level->parent_;
   }
   auto flatten_exp = tr::makeSequentialExp(std::move(move_stm_list));
@@ -650,7 +648,7 @@ void tr::Level::procEntryExit(tr::Exp *body,
   frags->PushBack(new frame::ProcFrag(stm1, this->frame_));
 }
 
-const int tr::Level::KStaticLinkOffset = 1 * frame::KX64WordSize;
+const int tr::Level::KStaticLinkOffset = -1 * frame::KX64WordSize;
 
 } // namespace tr
 
@@ -1148,6 +1146,7 @@ tr::Exp *VarDec::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
   auto ty_entry = this->typ_ ? tenv->Look(this->typ_) : nullptr;
   if (this->typ_ && !ty_entry) {
     errormsg->Error(this->pos_, "undefined type %s", this->typ_->Name().data());
+    return tr::Exp::no_op();
   }
 
   auto init_exp_and_ty =
@@ -1156,10 +1155,7 @@ tr::Exp *VarDec::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
   auto init_ty = init_exp_and_ty->ty_;
   if (this->typ_ && !type_check::is_same_d_type(ty_entry, init_ty)) {
     errormsg->Error(this->pos_, "type mismatch");
-  }
-  if (!this->typ_ && type_check::is_nil_type(init_ty)) {
-    errormsg->Error(this->pos_,
-                    "init should not be nil without type specified");
+    return tr::Exp::no_op();
   }
 
   // Allocate a local variable in the frame (increase the frame size).

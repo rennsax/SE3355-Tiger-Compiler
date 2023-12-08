@@ -9,8 +9,8 @@ X64RegManager::X64RegManager() {
   for (int i = 0; i < static_cast<int>(Register::COUNT); ++i) {
     auto temp = temp::TempFactory::NewTemp();
     this->regs_.push_back(temp);
-    std::string name{KRegisterNames.at(i)};
-    this->temp_map_->Enter(temp, &name);
+    auto name = new std::string{KRegisterNames.at(i)};
+    this->temp_map_->Enter(temp, name);
   }
 }
 
@@ -53,8 +53,7 @@ X64Frame::X64Frame(temp::Label *label, const std::list<bool> &formals)
   std::list<tree::Stm *> stm_list{};
 
   auto escape_it = begin(formals);
-  for (int i = 0; i < std::min(arg_reg_cnt, formals.size());
-       ++i, next(escape_it)) {
+  for (int i = 0; i < std::min(arg_reg_cnt, formals.size()); ++i, ++escape_it) {
 
     assert(escape_it != end(formals));
 
@@ -67,7 +66,7 @@ X64Frame::X64Frame(temp::Label *label, const std::list<bool> &formals)
   }
 
   for (int offset = 16; escape_it != end(formals);
-       next(escape_it), offset += KX64WordSize) {
+       ++escape_it, offset += KX64WordSize) {
     auto formal_access = new InFrameAccess(offset);
     this->formals_.push_back(formal_access);
   }
@@ -99,6 +98,9 @@ frame::Access *X64Frame::allocateLocal(bool escape) {
 }
 
 tree::Stm *X64Frame::procEntryExit1(tree::Stm *stm) const {
+  if (this->view_shift_stm_ == nullptr) {
+    return stm;
+  }
   return new tree::SeqStm(this->view_shift_stm_, stm);
 }
 
@@ -110,18 +112,21 @@ void X64Frame::procEntryExit2(assem::InstrList &body) const {
 assem::Proc *X64Frame::procEntryExit3(assem::InstrList *body) const {
 
   std::stringstream prologue_ss{}, epilogue_ss{};
-  prologue_ss << temp::LabelFactory::LabelString(this->name_);
+  prologue_ss << temp::LabelFactory::LabelString(this->name_) << ":";
 
-  {
+  do {
     /**
      * Adjust stack pointer.
      */
+    if (this->neg_local_offset_ == 0) {
+      break;
+    }
     auto rsp = reg_manager->StackPointer();
     std::stringstream ss{};
     ss << "subq $" << this->neg_local_offset_ << ", `d0";
     body->Prepend(new assem::OperInstr(ss.str(), new temp::TempList{rsp},
                                        new temp::TempList{rsp}, nullptr));
-  }
+  } while (0);
 
   {
     /**

@@ -25,7 +25,10 @@ extern frame::RegManager *reg_manager;
 namespace type_check {
 
 template <typename T> struct is_d_type {
-  bool operator()(type::Ty *ty) const { return typeid(T) == typeid(*ty); }
+  bool operator()(type::Ty *ty) const {
+    auto actual_ty = ty->ActualTy();
+    return typeid(T) == typeid(*actual_ty);
+  }
 };
 
 template <typename T> struct is_d_entry {
@@ -214,12 +217,11 @@ struct ExExp : public Exp {
     return new tree::ExpStm(this->exp_);
   }
   [[nodiscard]] Cx UnCx(err::ErrorMsg *errormsg) override {
-    auto t = temp::LabelFactory::NewLabel();
-    auto f = temp::LabelFactory::NewLabel();
-    auto trues = PatchList({&t});
-    auto falses = PatchList({&f});
-    tree::Stm *cjump_stm = new tree::CjumpStm(tree::RelOp::NE_OP, this->exp_,
-                                              new tree::ConstExp(0), t, f);
+    auto *cjump_stm =
+        new tree::CjumpStm(tree::RelOp::NE_OP, this->exp_,
+                           new tree::ConstExp(0), nullptr, nullptr);
+    auto trues = PatchList({&cjump_stm->true_label_});
+    auto falses = PatchList({&cjump_stm->false_label_});
     return Cx(trues, falses, cjump_stm);
   }
 };
@@ -278,20 +280,17 @@ struct CxExp : public Exp {
                                   new tree::EseqExp(new tree::LabelStm(t),
                                                     new tree::TempExp(r))))));
   }
-  [[nodiscard]] tree::Stm *UnNx() override {
-    // Unknown
-    assert(0);
-  }
+  [[nodiscard]] tree::Stm *UnNx() override { return this->cx_.stm_; }
   [[nodiscard]] Cx UnCx(err::ErrorMsg *errormsg) override { return this->cx_; }
 };
 
 Exp *Exp::no_op() { return new tr::ExExp(new tree::ConstExp(0)); }
 
 void ProgTr::Translate() {
-  FillBaseTEnv();
-  FillBaseVEnv();
   this->main_level_ = std::unique_ptr<tr::Level>{
       tr::Level::newBaseLevel(temp::Label::UniqueSymbol("tigermain"))};
+  FillBaseTEnv();
+  FillBaseVEnv();
   auto exp_and_ty = this->absyn_tree_->Translate(
       this->venv_.get(), this->tenv_.get(), this->main_level_.get(), nullptr,
       errormsg_.get());
@@ -329,9 +328,9 @@ tr::Exp *makeSimpleVariable(tr::Access *access, tr::Level *level,
 
   // Get the static link, which is the frame pointer of the next level.
   assert(level->parent_);
-  auto fp_new =
+  auto fp_new = new tree::MemExp(
       new tree::BinopExp(tree::BinOp::PLUS_OP, framePointer,
-                         new tree::ConstExp(Level::KStaticLinkOffset));
+                         new tree::ConstExp(-Level::KStaticLinkOffset)));
   return makeSimpleVariable(access, level->parent_, fp_new);
 }
 
@@ -425,6 +424,8 @@ tr::Exp *makeSequentialExp(std::list<tr::Exp *> expList) {
   cjump_stm.trues_.DoPatch(t);
   cjump_stm.falses_.DoPatch(f);
 
+  auto final_l = temp::LabelFactory::NewLabel();
+
   if (else_e == nullptr) {
     return new tr::NxExp(new tree::SeqStm(
         cjump_stm.stm_,
@@ -432,7 +433,18 @@ tr::Exp *makeSequentialExp(std::list<tr::Exp *> expList) {
             new tree::LabelStm(f),
             new tree::SeqStm(
                 false_action,
-                new tree::SeqStm(new tree::LabelStm(t), true_action)))));
+                new tree::SeqStm(
+                    new tree::JumpStm(new tree::NameExp(final_l),
+                                      new std::vector<temp::Label *>{final_l}),
+                    new tree::SeqStm(
+                        new tree::LabelStm(t),
+                        new tree::SeqStm(
+                            true_action,
+                            new tree::SeqStm(
+                                new tree::JumpStm(
+                                    new tree::NameExp(final_l),
+                                    new std::vector<temp::Label *>{final_l}),
+                                new tree::LabelStm(final_l)))))))));
   } else {
     return new tr::ExExp(new tree::EseqExp(
         cjump_stm.stm_,
@@ -441,9 +453,19 @@ tr::Exp *makeSequentialExp(std::list<tr::Exp *> expList) {
             new tree::EseqExp(
                 false_action,
                 new tree::EseqExp(
-                    new tree::LabelStm(t),
-                    new tree::EseqExp(true_action,
-                                      new tree::TempExp(result_temp)))))));
+                    new tree::JumpStm(new tree::NameExp(final_l),
+                                      new std::vector<temp::Label *>{final_l}),
+                    new tree::EseqExp(
+                        new tree::LabelStm(t),
+                        new tree::EseqExp(
+                            true_action,
+                            new tree::EseqExp(
+                                new tree::JumpStm(
+                                    new tree::NameExp(final_l),
+                                    new std::vector<temp::Label *>{final_l}),
+                                new tree::EseqExp(
+                                    new tree::LabelStm(final_l),
+                                    new tree::TempExp(result_temp))))))))));
   }
 }
 
@@ -478,11 +500,13 @@ tr::Exp *makeWhile(tr::Exp *test, tr::Exp *body, temp::Label *done,
       new tree::SeqStm(
           cjump.stm_,
           new tree::SeqStm(
-              body->UnNx(),
+              new tree::LabelStm(body_l),
               new tree::SeqStm(
-                  new tree::JumpStm(new tree::NameExp(test_l),
-                                    new std::vector<temp::Label *>{test_l}),
-                  new tree::LabelStm(done))))));
+                  body->UnNx(),
+                  new tree::SeqStm(
+                      new tree::JumpStm(new tree::NameExp(test_l),
+                                        new std::vector<temp::Label *>{test_l}),
+                      new tree::LabelStm(done)))))));
 }
 
 tr::Exp *makeCall(temp::Label *fun_label, const std::list<tr::Exp *> &args) {
@@ -494,6 +518,16 @@ tr::Exp *makeCall(temp::Label *fun_label, const std::list<tr::Exp *> &args) {
       new tree::CallExp(new tree::NameExp(fun_label), arg_list));
 }
 
+tr::Exp *makeExternalCall(std::string_view fun_name,
+                          const std::list<tr::Exp *> &args) {
+
+  auto arg_list = new tree::ExpList();
+  for (auto arg : args) {
+    arg_list->Append(arg->UnEx());
+  }
+  return new tr::ExExp(frame::externalCall(fun_name, arg_list));
+}
+
 tr::Exp *makeString(temp::Label *str_label) {
   return new tr::ExExp(new tree::NameExp(str_label));
 }
@@ -502,7 +536,7 @@ tr::Exp *makeRecord(const std::vector<tr::Exp *> &field_exps) {
   std::list<tr::Exp *> init_record_stm{};
   auto malloc_call = frame::externalCall(
       "alloc_record",
-      new tree::ExpList({new tree::ConstExp(init_record_stm.size())}));
+      new tree::ExpList({new tree::ConstExp(field_exps.size())}));
   auto r = temp::TempFactory::NewTemp();
   auto create_record_stm = new tree::MoveStm(new tree::TempExp(r), malloc_call);
   init_record_stm.push_back(new tr::NxExp(create_record_stm));
@@ -565,6 +599,8 @@ std::list<tr::Access *> Level::formals() {
   // At least we have static link.
   assert(actual_formals.size() >= 1);
 
+  visible_formals.resize(actual_formals.size() - 1);
+
   transform(next(begin(actual_formals)), end(actual_formals),
             begin(visible_formals),
             [this](frame::Access *f_access) -> tr::Access * {
@@ -614,7 +650,7 @@ void tr::Level::procEntryExit(tr::Exp *body,
   frags->PushBack(new frame::ProcFrag(stm1, this->frame_));
 }
 
-const int tr::Level::KStaticLinkOffset = 0 * frame::KX64WordSize;
+const int tr::Level::KStaticLinkOffset = 1 * frame::KX64WordSize;
 
 } // namespace tr
 
@@ -686,7 +722,7 @@ tr::ExpAndTy *SubscriptVar::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
       this->var_->Translate(venv, tenv, level, done, errormsg);
   auto array_ty = array_exp_and_ty->ty_;
 
-  if (!type_check::is_array_type(array_ty)) {
+  if (!type_check::is_array_type(array_ty->ActualTy())) {
     errormsg->Error(this->pos_, "array type required");
     return tr::ExpAndTy::dummy();
   }
@@ -694,10 +730,11 @@ tr::ExpAndTy *SubscriptVar::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
       this->subscript_->Translate(venv, tenv, level, done, errormsg);
   auto index_ty = index_exp_and_ty->ty_;
 
-  if (!type_check::is_int_type(index_ty)) {
+  if (!type_check::is_int_type(index_ty->ActualTy())) {
     errormsg->Error(this->pos_, "integer required");
   }
-  auto ret_ty = static_cast<type::ArrayTy *>(array_ty)->ty_->ActualTy();
+  auto ret_ty =
+      static_cast<type::ArrayTy *>(array_ty->ActualTy())->ty_->ActualTy();
   auto ret_exp =
       tr::makeSubscript(array_exp_and_ty->exp_, index_exp_and_ty->exp_);
 
@@ -741,12 +778,20 @@ tr::ExpAndTy *CallExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
   auto fun_entry = static_cast<env::FunEntry *>(entry);
   std::list<tr::Exp *> call_args_exp{};
   // Translate knows that each frame contains a static link. (P144)
-  call_args_exp.push_back(level->prepareStaticLink(fun_entry->level_));
+  if (fun_entry->label_ != nullptr) {
+    // External call doesn't need a static link.
+    call_args_exp.push_back(level->prepareStaticLink(fun_entry->level_));
+  }
   for (auto arg : this->args_->GetList()) {
     auto arg_exp_and_ty = arg->Translate(venv, tenv, level, done, errormsg);
     call_args_exp.push_back(arg_exp_and_ty->exp_);
   }
-  auto ret_exp = tr::makeCall(fun_entry->label_, call_args_exp);
+  tr::Exp *ret_exp = nullptr;
+  if (fun_entry->label_ == nullptr) {
+    ret_exp = tr::makeExternalCall(this->func_->Name(), call_args_exp);
+  } else {
+    ret_exp = tr::makeCall(fun_entry->label_, call_args_exp);
+  }
   auto ret_ty = fun_entry->result_;
   return new tr::ExpAndTy(ret_exp, ret_ty);
 }
@@ -772,6 +817,7 @@ tr::ExpAndTy *OpExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
       return tr::ExpAndTy::dummy();
     }
     if (type_check::is_str_type(lhs_ty->ActualTy())) {
+      // str1 != str2   =>  1 - (str1 == str2)
       if (this->oper_ == Oper::EQ_OP) {
         return new tr::ExpAndTy(
             tr::makeStringEqual(left_exp_and_ty->exp_, right_exp_and_ty->exp_),
@@ -782,7 +828,6 @@ tr::ExpAndTy *OpExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
           new absyn::OpExp(0, Oper::EQ_OP, this->left_, this->right_));
       return newAbsynExp->Translate(venv, tenv, level, done, errormsg);
     }
-    // str1 != str2   =>  1 - (str1 == str2)
     break;
   case Oper::PLUS_OP:
   case Oper::MINUS_OP:
@@ -946,7 +991,7 @@ tr::ExpAndTy *ForExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                 new IntExp(0, 1)));
   auto body_exp_list = new ExpList();
   body_exp_list->Prepend(increase_exp);
-  body_exp_list->Prepend(test_exp);
+  body_exp_list->Prepend(this->body_);
   auto while_body = new SeqExp(0, body_exp_list);
 
   auto let_exp = new LetExp(0, decList, new WhileExp(0, test_exp, while_body));
@@ -1079,7 +1124,7 @@ tr::Exp *FunctionDec::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
     }
 
     auto body_exp_and_ty =
-        fun->body_->Translate(venv, tenv, level, done, errormsg);
+        fun->body_->Translate(venv, tenv, fun_entry->level_, done, errormsg);
     // body_exps.push_back(body_exp_and_ty->exp_);
     // body_is_procedures.push_back(fun->result_ == nullptr);
     bool is_procedure = type_check::is_void_type(fun_entry->result_);

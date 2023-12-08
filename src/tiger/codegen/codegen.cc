@@ -84,7 +84,7 @@ void CjumpStm::Munch(assem::InstrList &instr_list, std::string_view fs) {
   auto left_r = this->left_->Munch(instr_list, fs);
   auto right_r = this->right_->Munch(instr_list, fs);
   instr_list.Append(new assem::OperInstr(
-      "cmpq `s0, `s1"s, nullptr, new temp::TempList{left_r, right_r}, nullptr));
+      "cmpq `s1, `s0"s, nullptr, new temp::TempList{left_r, right_r}, nullptr));
   std::stringstream ss{};
   ss << op_jmp_mapper.find(this->op_)->second << " `j0";
   auto jump_targets = new std::vector<temp::Label *>{this->true_label_};
@@ -94,13 +94,20 @@ void CjumpStm::Munch(assem::InstrList &instr_list, std::string_view fs) {
 
 void MoveStm::Munch(assem::InstrList &instr_list, std::string_view fs) {
   auto src_r = this->src_->Munch(instr_list, fs);
-
   if (typeid(*this->dst_) == typeid(tree::MemExp)) {
-    auto mem_exp = static_cast<tree::MemExp>(this->dst_);
-    assert(typeid(*mem_exp.exp_) == typeid(tree::BinopExp));
-    auto mem_addr_exp = static_cast<tree::BinopExp *>(mem_exp.exp_);
+    auto mem_exp = static_cast<tree::MemExp *>(this->dst_);
+
+    if (typeid(*mem_exp->exp_) == typeid(tree::TempExp)) {
+      auto addr_r = mem_exp->exp_->Munch(instr_list, fs);
+      instr_list.Append(new assem::OperInstr("movq `s0, (`s1)", nullptr,
+                                             new temp::TempList{src_r, addr_r},
+                                             nullptr));
+      return;
+    }
+
+    assert(typeid(*mem_exp->exp_) == typeid(tree::BinopExp));
+    auto mem_addr_exp = static_cast<tree::BinopExp *>(mem_exp->exp_);
     assert(mem_addr_exp->op_ == tree::BinOp::PLUS_OP);
-    auto src_r = this->src_->Munch(instr_list, fs);
 
     if (!is_const_exp(mem_addr_exp->left_) && !is_const_exp(mem_addr_exp)) {
       auto addr_r = mem_addr_exp->Munch(instr_list, fs);
@@ -141,39 +148,8 @@ void ExpStm::Munch(assem::InstrList &instr_list, std::string_view fs) {
 }
 
 temp::Temp *BinopExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
-  // Prologue
-  // It's meaningless, should never occur.
-  assert(!(is_const_exp(this->left_) && is_const_exp(this->right_)));
-  // Canon should handle it, but I don't know if it has.
-  if (!is_const_exp(this->left_)) {
-    auto tmp = this->left_;
-    this->right_ = this->left_;
-    this->left_ = this->right_;
-  }
-
-  // Now if there is a const, if must occur on the left.
-
-  // Begin to handle BinopExp
-  // Left side can be immediate or register.
-  struct {
-    union {
-      int val;
-      temp::Temp *reg;
-    } u;
-    bool is_const;
-  } lhs{{}, false};
-
-  // Handle the left side, where constant may occur.
-  if (is_const_exp(this->left_)) {
-    lhs.u.val = deConstExp(this->left_);
-    lhs.is_const = true;
-  } else {
-    auto left_r = this->left_->Munch(instr_list, fs);
-    lhs.u.reg = left_r;
-    lhs.is_const = false;
-  }
-
-  // Right operand, also the returned register.
+  // Munch further
+  auto left_r = this->left_->Munch(instr_list, fs);
   auto right_r = this->right_->Munch(instr_list, fs);
 
   using tree::BinOp;
@@ -187,45 +163,72 @@ temp::Temp *BinopExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
     // The form: imulp s. Effect: put RAX * s to RDX:RAX.
     auto rax = reg_manager->GetRegister(static_cast<int>(frame::Register::RAX));
     auto rdx = reg_manager->GetRegister(static_cast<int>(frame::Register::RDX));
+    // Backup rax, rdx
+    auto backup1 = temp::TempFactory::NewTemp();
+    auto backup2 = temp::TempFactory::NewTemp();
+    instr_list.Append(new assem::MoveInstr(
+        "movq `s0, `d0", new temp::TempList{backup1}, new temp::TempList{rax}));
+    instr_list.Append(new assem::MoveInstr(
+        "movq `s0, `d0", new temp::TempList{backup2}, new temp::TempList{rdx}));
     // Move the lhs to RAX
-    if (lhs.is_const) {
-      std::stringstream ss{};
-      ss << "movq $" << lhs.u.val << ", `d0";
-      instr_list.Append(
-          new assem::MoveInstr(ss.str(), new temp::TempList{rax}, nullptr));
-    } else {
-      instr_list.Append(new assem::MoveInstr("movq `s0, `d0",
-                                             new temp::TempList{rax},
-                                             new temp::TempList{lhs.u.reg}));
-    }
+    instr_list.Append(new assem::MoveInstr(
+        "movq `s0, `d0", new temp::TempList{rax}, new temp::TempList{left_r}));
     instr_list.Append(
         new assem::OperInstr("imulq `s0", new temp::TempList{rax, rdx},
                              new temp::TempList{right_r, rax}, nullptr));
-    return rax;
+    auto r = temp::TempFactory::NewTemp();
+    instr_list.Append(new assem::MoveInstr(
+        "movq `s0, `d0", new temp::TempList{r}, new temp::TempList{rax}));
+    // restore rax, rdx
+    instr_list.Append(new assem::MoveInstr(
+        "movq `s0, `d0", new temp::TempList{rdx}, new temp::TempList{backup2}));
+    instr_list.Append(new assem::MoveInstr(
+        "movq `s0, `d0", new temp::TempList{rax}, new temp::TempList{backup1}));
+    return r;
   } else if (this->op_ == DIV_OP) {
-    // TODO divide
-    assert(0);
+    // Backup rax, rdx
+    auto backup1 = temp::TempFactory::NewTemp();
+    auto backup2 = temp::TempFactory::NewTemp();
+    auto rax = reg_manager->GetRegister(static_cast<int>(frame::Register::RAX));
+    auto rdx = reg_manager->GetRegister(static_cast<int>(frame::Register::RDX));
+    instr_list.Append(new assem::MoveInstr(
+        "movq `s0, `d0", new temp::TempList{backup1}, new temp::TempList{rax}));
+    instr_list.Append(new assem::MoveInstr(
+        "movq `s0, `d0", new temp::TempList{backup2}, new temp::TempList{rdx}));
+    // Move the dividend to rax
+    instr_list.Append(new assem::MoveInstr(
+        "movq `s0, `d0", new temp::TempList{rax}, new temp::TempList{left_r}));
+    // Extended to 128-bit
+    instr_list.Append(new assem::OperInstr("cqto", new temp::TempList{rdx, rax},
+                                           new temp::TempList{rax}, nullptr));
+    // Divide
+    instr_list.Append(
+        new assem::OperInstr("idivq `s0", new temp::TempList{rdx, rax},
+                             new temp::TempList{right_r, rax}, nullptr));
+    auto r = temp::TempFactory::NewTemp();
+    instr_list.Append(new assem::MoveInstr(
+        "movq `s0, `d0", new temp::TempList{r}, new temp::TempList{rax}));
+    // restore rax, rdx
+    instr_list.Append(new assem::MoveInstr(
+        "movq `s0, `d0", new temp::TempList{rdx}, new temp::TempList{backup2}));
+    instr_list.Append(new assem::MoveInstr(
+        "movq `s0, `d0", new temp::TempList{rax}, new temp::TempList{backup1}));
+    return r;
   } else {
     assert(0);
   }
   // Normal case
   assert(!i_oper.empty());
-  auto src_regs = new temp::TempList{};
-  auto dst_regs = new temp::TempList{};
-  std::string lhs_name{};
-  if (lhs.is_const) {
-    lhs_name = "$" + std::to_string(lhs.u.val);
-  } else {
-    lhs_name = "`s0";
-    src_regs->Append(lhs.u.reg);
-  }
   std::stringstream ss{};
-  ss << i_oper << " " << lhs_name << ", `d0";
-  src_regs->Append(right_r);
-  dst_regs->Append(right_r);
-  instr_list.Append(
-      new assem::OperInstr(ss.str(), dst_regs, src_regs, nullptr));
-  return right_r;
+  ss << i_oper << " "
+     << "`s1, `d0";
+  instr_list.Append(new assem::OperInstr(ss.str(), new temp::TempList{left_r},
+                                         new temp::TempList{left_r, right_r},
+                                         nullptr));
+  auto r = temp::TempFactory::NewTemp();
+  instr_list.Append(new assem::MoveInstr("movq `s0, `d0", new temp::TempList{r},
+                                         new temp::TempList{left_r}));
+  return r;
 }
 
 temp::Temp *MemExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
@@ -268,7 +271,10 @@ temp::Temp *MemExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
 }
 
 temp::Temp *TempExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
-  return this->temp_;
+  auto r = temp::TempFactory::NewTemp();
+  instr_list.Append(new assem::MoveInstr("movq `s0, `d0", new temp::TempList{r},
+                                         new temp::TempList{this->temp_}));
+  return r;
 }
 
 temp::Temp *EseqExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
@@ -277,7 +283,14 @@ temp::Temp *EseqExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
 }
 
 temp::Temp *NameExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
-  assert(0);
+  // String literal
+  auto r = temp::TempFactory::NewTemp();
+  std::stringstream ss{};
+  ss << "leaq " << temp::LabelFactory::LabelString(this->name_)
+     << "(%rip), `d0";
+  instr_list.Append(
+      new assem::OperInstr(ss.str(), new temp::TempList{r}, nullptr, nullptr));
+  return r;
 }
 
 temp::Temp *ConstExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
@@ -316,7 +329,7 @@ temp::TempList *ExpList::MunchArgs(assem::InstrList &instr_list,
 
   // Munch to select the instructions.
   auto arg_exp_it = this->exp_list_.begin();
-  for (int i = 0; i < std::min(arg_cnt, reg_cnt); ++i, next(arg_exp_it)) {
+  for (int i = 0; i < std::min(arg_cnt, reg_cnt); ++i, ++arg_exp_it) {
     // Update returned register list
     r_list->Append(convention_args->NthTemp(i));
 
@@ -342,7 +355,7 @@ temp::TempList *ExpList::MunchArgs(assem::InstrList &instr_list,
       "subq $" + std::to_string(frame::KX64WordSize) + ", `d0";
 
   for (int offset_word = 0; arg_exp_it != this->exp_list_.end();
-       offset_word++, next(arg_exp_it)) {
+       offset_word++, arg_exp_it++) {
 
     auto rsp = reg_manager->StackPointer();
     tree::Exp *arg_exp = *arg_exp_it;

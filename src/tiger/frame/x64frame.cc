@@ -71,7 +71,7 @@ X64Frame::X64Frame(temp::Label *label, const std::list<bool> &formals)
     this->formals_.push_back(formal_access);
   }
 
-  // 8(%rbp): return address (not used).
+  // 8(%rbp): return address (not used), set by `call` instruction.
   // (%rbp): previous %rbp value. Let #procEntryExit3 handles it.
 
   // Combine all statements.
@@ -114,40 +114,44 @@ assem::Proc *X64Frame::procEntryExit3(assem::InstrList *body) const {
   std::stringstream prologue_ss{}, epilogue_ss{};
   prologue_ss << temp::LabelFactory::LabelString(this->name_) << ":";
 
-  do {
-    /**
-     * Adjust stack pointer.
-     */
-    if (this->neg_local_offset_ == 0) {
-      break;
-    }
-    auto rsp = reg_manager->StackPointer();
-    std::stringstream ss{};
-    ss << "subq $" << this->neg_local_offset_ << ", `d0";
-    body->Prepend(new assem::OperInstr(ss.str(), new temp::TempList{rsp},
-                                       new temp::TempList{rsp}, nullptr));
-  } while (0);
-
   {
-    /**
-     * Prepend something equivalent to:
-     * pushq %rbp  ; => subq $8, %rsp
-     *             ;    movq %rbp, (%rsp)
-     * movq %rsp, %rbp
-     *
-     */
-    auto rsp = reg_manager->GetRegister(static_cast<int>(Register::RSP));
-    auto rbp = reg_manager->GetRegister(static_cast<int>(Register::RBP));
-    body->Prepend(new assem::MoveInstr("movq `s0, `d0", new temp::TempList(rbp),
-                                       new temp::TempList(rsp)));
+    // Prepend instructions. Collect them in a list, and reversely prepend.
+    std::list<assem::Instr *> to_prepend{};
+    {
+      /**
+       * Prepend something equivalent to:
+       * pushq %rbp  ; => subq $8, %rsp
+       *             ;    movq %rbp, (%rsp)
+       * movq %rsp, %rbp
+       *
+       */
+      auto rsp = reg_manager->GetRegister(static_cast<int>(Register::RSP));
+      auto rbp = reg_manager->GetRegister(static_cast<int>(Register::RBP));
 
-    body->Prepend(new assem::OperInstr("movq `s0, (`s1)", nullptr,
-                                       new temp::TempList{rbp, rsp}, nullptr));
+      auto push_instr_list = makePushInstr(rbp);
+      to_prepend.insert(end(to_prepend), begin(push_instr_list),
+                        end(push_instr_list));
+      to_prepend.push_back(new assem::MoveInstr(
+          "movq `s0, `d0", new temp::TempList(rbp), new temp::TempList(rsp)));
+    }
 
-    std::stringstream ss{};
-    ss << "subq $" << KX64WordSize << ", `d0";
-    body->Prepend(new assem::OperInstr(ss.str(), new temp::TempList{rsp},
-                                       new temp::TempList{rsp}, nullptr));
+    do {
+      /**
+       * Adjust stack pointer.
+       */
+      if (this->neg_local_offset_ == 0) {
+        break;
+      }
+      auto rsp = reg_manager->StackPointer();
+      std::stringstream ss{};
+      ss << "subq $" << this->neg_local_offset_ << ", `d0";
+      to_prepend.push_back(new assem::OperInstr(
+          ss.str(), new temp::TempList{rsp}, new temp::TempList{rsp}, nullptr));
+    } while (0);
+
+    for (auto it = rbegin(to_prepend); it != rend(to_prepend); ++it) {
+      body->Prepend(*it);
+    }
   }
 
   {
@@ -163,12 +167,7 @@ assem::Proc *X64Frame::procEntryExit3(assem::InstrList *body) const {
 
     body->Append(new assem::MoveInstr("movq `s0, `d0", new temp::TempList(rsp),
                                       new temp::TempList(rbp)));
-    body->Append(new assem::OperInstr("movq (`s0), `s1", nullptr,
-                                      new temp::TempList{rsp, rbp}, nullptr));
-    std::stringstream ss{};
-    ss << "addq $" << KX64WordSize << ", `d0";
-    body->Append(new assem::OperInstr(ss.str(), new temp::TempList{rsp},
-                                      new temp::TempList{rsp}, nullptr));
+    body->Concat(makePopInstr(rbp));
   }
 
   {
@@ -183,4 +182,42 @@ assem::Proc *X64Frame::procEntryExit3(assem::InstrList *body) const {
   return new assem::Proc(prologue_ss.str(), body, epilogue_ss.str());
 }
 
+std::list<assem::Instr *> makePushInstr(Immediate con) {
+  auto rsp = reg_manager->GetRegister(static_cast<int>(Register::RSP));
+  std::list<assem::Instr *> res{};
+  std::stringstream ss{};
+  ss << "subq $" << KX64WordSize << ", `d0";
+  res.push_back(new assem::OperInstr(ss.str(), new temp::TempList{rsp},
+                                     new temp::TempList{rsp}, nullptr));
+  ss.str("");
+  ss << "movq $" << con << ", (`s0)";
+  res.push_back(new assem::OperInstr(ss.str(), nullptr, new temp::TempList{rsp},
+                                     nullptr));
+  return res;
+}
+
+std::list<assem::Instr *> makePushInstr(temp::Temp *operand) {
+  auto rsp = reg_manager->GetRegister(static_cast<int>(Register::RSP));
+  std::list<assem::Instr *> res{};
+  std::stringstream ss{};
+  ss << "subq $" << KX64WordSize << ", `d0";
+  res.push_back(new assem::OperInstr(ss.str(), new temp::TempList{rsp},
+                                     new temp::TempList{rsp}, nullptr));
+  res.push_back(new assem::OperInstr(
+      "movq `s0, (`s1)", nullptr, new temp::TempList{operand, rsp}, nullptr));
+  return res;
+}
+
+std::list<assem::Instr *> makePopInstr(temp::Temp *operand) {
+  auto rsp = reg_manager->GetRegister(static_cast<int>(Register::RSP));
+  std::list<assem::Instr *> res{};
+  res.push_back(new assem::OperInstr(
+      "movq (`s0), `s1", nullptr, new temp::TempList{rsp, operand}, nullptr));
+
+  std::stringstream ss{};
+  ss << "addq $" << KX64WordSize << ", `d0";
+  res.push_back(new assem::OperInstr(ss.str(), new temp::TempList{rsp},
+                                     new temp::TempList{rsp}, nullptr));
+  return res;
+}
 } // namespace frame

@@ -111,6 +111,11 @@ public:
   [[nodiscard]] const std::list<Instr *> &GetList() const {
     return instr_list_;
   }
+  void Concat(std::list<Instr *> tail) {
+    for (auto instr : tail) {
+      instr_list_.push_back(instr);
+    }
+  }
 
 private:
   std::list<Instr *> instr_list_;
@@ -127,5 +132,15 @@ public:
 };
 
 } // namespace assem
+
+namespace frame {
+
+using Immediate = int64_t;
+
+std::list<assem::Instr *> makePushInstr(temp::Temp *operand);
+std::list<assem::Instr *> makePushInstr(Immediate con);
+std::list<assem::Instr *> makePopInstr(temp::Temp *operand);
+
+} // namespace frame
 
 #endif

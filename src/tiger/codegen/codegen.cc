@@ -71,7 +71,7 @@ temp::Temp *deTempExp(tree::Exp *exp) {
 struct Exp::MaybeConst {
   bool is_const;
   union {
-    int val;
+    frame::Immediate val;
     temp::Temp *reg;
   } u;
 
@@ -470,10 +470,23 @@ temp::Temp *CallExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
   auto instr_str =
       "callq " + temp::LabelFactory::LabelString(
                      static_cast<tree::NameExp *>(this->fun_)->name_);
-  auto instr =
-      new assem::OperInstr(instr_str, new temp::TempList({r}), args, nullptr);
 
-  instr_list.Append(instr);
+  instr_list.Append(
+      new assem::OperInstr(instr_str, new temp::TempList({r}), args, nullptr));
+
+  auto outgoing_cnt = size(this->args_->GetList());
+  auto arg_reg_cnt = size(reg_manager->ArgRegs()->GetList());
+
+  // Forget the outgoing arguments. Implemented by increasing the stack pointer.
+  if (outgoing_cnt > arg_reg_cnt) {
+    auto rsp = reg_manager->StackPointer();
+    std::stringstream ss{};
+    ss << "addq $" << (outgoing_cnt - arg_reg_cnt) * frame::KX64WordSize
+       << ", `d0";
+    instr_list.Append(new assem::OperInstr(ss.str(), new temp::TempList{rsp},
+                                           new temp::TempList{rsp}, nullptr));
+  }
+
   return r;
 }
 
@@ -493,50 +506,42 @@ temp::TempList *ExpList::MunchArgs(assem::InstrList &instr_list,
     tree::Exp *arg_exp = *arg_exp_it;
     auto dst_regs = new temp::TempList({convention_args->NthTemp(i)});
 
-    if (is_const_exp(arg_exp)) {
+    auto maybe_const = arg_exp->MunchIfConst(instr_list, fs, false);
+
+    if (maybe_const.is_const) {
       std::stringstream ss{};
-      ss << "movq $" << deConstExp(arg_exp) << ", `d0";
+      ss << "movq $" << maybe_const.u.val << ", `d0";
       auto instr = new assem::MoveInstr(ss.str(), dst_regs, nullptr);
       instr_list.Append(instr);
     } else {
       // Get the argument from another register.
-      auto src_regs = new temp::TempList(arg_exp->Munch(instr_list, fs));
-      auto instr =
-          new assem::OperInstr("movq `s0, `d0"s, dst_regs, src_regs, nullptr);
+      auto src_regs = new temp::TempList(maybe_const.u.reg);
+      auto instr = new assem::MoveInstr("movq `s0, `d0"s, dst_regs, src_regs);
       instr_list.Append(instr);
     }
   }
 
-  // Some arguments need to be pushed onto the stack.
-  std::string instr_dec_rsp =
-      "subq $" + std::to_string(frame::KX64WordSize) + ", `d0";
+  std::list<tree::Exp::MaybeConst> param_variant{};
+  // Munch the outgoing arguments and store their access,
+  // which is used to emit code later.
+  for (; arg_exp_it != this->exp_list_.end(); arg_exp_it++) {
 
-  for (int offset_word = 0; arg_exp_it != this->exp_list_.end();
-       offset_word++, arg_exp_it++) {
-
-    auto rsp = reg_manager->StackPointer();
     tree::Exp *arg_exp = *arg_exp_it;
-    auto src_regs = new temp::TempList({rsp});
 
-    // e.g. 8(%rsp)
-    std::string dst_name =
-        std::to_string(offset_word * frame::KX64WordSize) + "(`s0)";
+    auto maybe_const = arg_exp->MunchIfConst(instr_list, fs, true);
+    param_variant.push_back(maybe_const);
+  }
 
-    std::stringstream ss{};
-    if (is_const_exp(arg_exp)) {
-      // Literal argument
-      ss << "movq $" << deConstExp(arg_exp) << ", " << dst_name;
+  // X86: outgoing parameters are pushed in reverse order.
+  auto rsp = reg_manager->StackPointer();
+  for (auto it = rbegin(param_variant); it != rend(param_variant); ++it) {
+
+    auto reg_or_const = *it;
+    if (reg_or_const.is_const) {
+      instr_list.Concat(frame::makePushInstr(reg_or_const.u.val));
     } else {
-      // Get the argument from another register.
-      src_regs->Append(arg_exp->Munch(instr_list, fs));
-      ss << "movq `s1, " << dst_name;
+      instr_list.Concat(frame::makePushInstr(reg_or_const.u.reg));
     }
-
-    instr_list.Append(new assem::OperInstr(instr_dec_rsp,
-                                           new temp::TempList{rsp},
-                                           new temp::TempList{rsp}, nullptr));
-    instr_list.Append(
-        new assem::OperInstr(ss.str(), nullptr, src_regs, nullptr));
   }
 
   return r_list;

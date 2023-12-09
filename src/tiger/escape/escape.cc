@@ -81,12 +81,10 @@ void WhileExp::Traverse(esc::EscEnvPtr env, int depth) {
 }
 
 void ForExp::Traverse(esc::EscEnvPtr env, int depth) {
+  this->escape_ = false;
   this->lo_->Traverse(env, depth);
   this->hi_->Traverse(env, depth);
-  // env->BeginScope();
-  // env->Enter(this->var_, new esc::EscapeEntry(depth + 1, &this->escape_));
   this->body_->Traverse(env, depth);
-  // env->EndScope();
 }
 
 void BreakExp::Traverse(esc::EscEnvPtr env, int depth) {}
@@ -110,6 +108,7 @@ void FunctionDec::Traverse(esc::EscEnvPtr env, int depth) {
   for (auto fun_dec : this->functions_->GetList()) {
     env->BeginScope();
     for (auto arg : fun_dec->params_->GetList()) {
+      arg->escape_ = false;
       env->Enter(arg->name_, new esc::EscapeEntry(depth + 1, &arg->escape_));
     }
     fun_dec->body_->Traverse(env, depth + 1);
@@ -118,6 +117,7 @@ void FunctionDec::Traverse(esc::EscEnvPtr env, int depth) {
 }
 
 void VarDec::Traverse(esc::EscEnvPtr env, int depth) {
+  this->escape_ = false;
   env->Enter(this->var_, new esc::EscapeEntry(depth, &this->escape_));
 }
 

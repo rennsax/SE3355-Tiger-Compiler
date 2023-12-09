@@ -420,11 +420,14 @@ class ForExp : public Exp {
 public:
   sym::Symbol *var_;
   Exp *lo_, *hi_, *body_;
-  // The index of For expression is always escaped (in register)
+  // The index of For expression is always not escaped (in register)
   bool escape_;
 
   ForExp(int pos, sym::Symbol *var, Exp *lo, Exp *hi, Exp *body)
-      : Exp(pos), var_(var), lo_(lo), hi_(hi), body_(body), escape_(false) {}
+      : Exp(pos), var_(var), lo_(lo), hi_(hi), body_(body),
+        // We should initialize the field to `false`.
+        // Here is a compromise for Lab3.
+        escape_(true) {}
   ~ForExp() override;
 
   void Print(FILE *out, int d) const override;
@@ -577,7 +580,7 @@ public:
   bool escape_;
 
   VarDec(int pos, sym::Symbol *var, sym::Symbol *typ, Exp *init)
-      : Dec(pos), var_(var), typ_(typ), init_(init), escape_(false) {}
+      : Dec(pos), var_(var), typ_(typ), init_(init), escape_(true) {}
   ~VarDec() override;
 
   void Print(FILE *out, int d) const override;
@@ -684,7 +687,7 @@ public:
   bool escape_;
 
   Field(int pos, sym::Symbol *name, sym::Symbol *typ)
-      : pos_(pos), name_(name), typ_(typ), escape_(false) {}
+      : pos_(pos), name_(name), typ_(typ), escape_(true) {}
 
   void Print(FILE *out, int d) const;
 };

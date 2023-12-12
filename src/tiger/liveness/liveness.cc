@@ -43,13 +43,9 @@ MoveList *MoveList::Intersect(MoveList *list) {
   return res;
 }
 
-void LiveGraphFactory::LiveMap() {
-  /* TODO: Put your lab6 code here */
-}
+void LiveGraphFactory::LiveMap() { /* TODO: Put your lab6 code here */ }
 
-void LiveGraphFactory::InterfGraph() {
-  /* TODO: Put your lab6 code here */
-}
+void LiveGraphFactory::InterfGraph() { /* TODO: Put your lab6 code here */ }
 
 void LiveGraphFactory::Liveness() {
   LiveMap();

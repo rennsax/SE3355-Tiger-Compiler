@@ -2,6 +2,7 @@
 #define TIGER_UTIL_GRAPH_H_
 
 #include "tiger/util/table.h"
+#include <list>
 
 namespace graph {
 

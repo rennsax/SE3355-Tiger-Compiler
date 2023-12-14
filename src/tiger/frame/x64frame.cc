@@ -67,6 +67,7 @@ X64Frame::X64Frame(temp::Label *label, const std::list<bool> &formals)
 
   for (int offset = 16; escape_it != end(formals);
        ++escape_it, offset += KX64WordSize) {
+    // They are passed on the stack. Therefore, they must "escape".
     auto formal_access = new InFrameAccess(offset);
     this->formals_.push_back(formal_access);
   }
@@ -98,10 +99,35 @@ frame::Access *X64Frame::allocateLocal(bool escape) {
 }
 
 tree::Stm *X64Frame::procEntryExit1(tree::Stm *stm) const {
-  if (this->view_shift_stm_ == nullptr) {
-    return stm;
+
+  // Move all callee-save registers to fresh registers.
+  auto callee_saves = reg_manager->CalleeSaves()->GetList();
+  std::vector<temp::Temp *> callee_tmps{};
+  for (auto reg : callee_saves) {
+    auto r = temp::TempFactory::NewTemp();
+    callee_tmps.push_back(r);
+    stm = new tree::SeqStm(
+        new tree::MoveStm(new tree::TempExp(r), new tree::TempExp(reg)), stm);
   }
-  return new tree::SeqStm(this->view_shift_stm_, stm);
+
+  // Generated when the frame is created.
+  if (this->view_shift_stm_) {
+    stm = new tree::SeqStm(this->view_shift_stm_, stm);
+  }
+
+  // Move callee-save registers back.
+  {
+    auto reg_it = begin(callee_saves);
+    auto tmp_it = begin(callee_tmps);
+    for (; reg_it != end(callee_saves) && tmp_it != end(callee_tmps);
+         ++reg_it, ++tmp_it) {
+      stm =
+          new tree::SeqStm(stm, new tree::MoveStm(new tree::TempExp(*reg_it),
+                                                  new tree::TempExp(*tmp_it)));
+    }
+  }
+
+  return stm;
 }
 
 void X64Frame::procEntryExit2(assem::InstrList &body) const {

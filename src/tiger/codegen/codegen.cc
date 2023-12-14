@@ -310,6 +310,7 @@ void CjumpStm::Munch(assem::InstrList &instr_list, std::string_view fs) {
       ss << "cmpq `s" << src_regs->GetList().size() << ", "
          << in_mem_res.operand;
       src_regs->Append(this->right_->Munch(instr_list, fs));
+      // CMP instructions have the side effect to modify the machine status.
       instr_list.Append(
           new assem::OperInstr(ss.str(), nullptr, src_regs, nullptr));
       break;
@@ -443,6 +444,7 @@ temp::Temp *BinopExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
     // Move the lhs to RAX
     instr_list.Append(new assem::MoveInstr(
         "movq `s0, `d0", new temp::TempList{rax}, new temp::TempList{left_r}));
+    // Multiply the operand and RAX, place the result in RDX:RAX.
     instr_list.Append(
         new assem::OperInstr("imulq `s0", new temp::TempList{rax, rdx},
                              new temp::TempList{right_r, rax}, nullptr));
@@ -471,10 +473,11 @@ temp::Temp *BinopExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
     // Extended to 128-bit
     instr_list.Append(new assem::OperInstr("cqto", new temp::TempList{rdx, rax},
                                            new temp::TempList{rax}, nullptr));
-    // Divide
+    // Divide RDX:RAX by the operand, place the quotient in RAX and the
+    // remainder in RDX.
     instr_list.Append(
         new assem::OperInstr("idivq `s0", new temp::TempList{rdx, rax},
-                             new temp::TempList{right_r, rax}, nullptr));
+                             new temp::TempList{right_r, rax, rdx}, nullptr));
     auto r = temp::TempFactory::NewTemp();
     instr_list.Append(new assem::MoveInstr(
         "movq `s0, `d0", new temp::TempList{r}, new temp::TempList{rax}));
@@ -553,13 +556,14 @@ temp::Temp *CallExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
   auto r = temp::TempFactory::NewTemp();
   auto rv = reg_manager->ReturnValue();
   auto args = this->args_->MunchArgs(instr_list, fs);
+  auto call_dst = new temp::TempList{rv};
+  call_dst->Concat(reg_manager->CallerSaves());
 
   auto instr_str =
       "callq " + temp::LabelFactory::LabelString(
                      static_cast<tree::NameExp *>(this->fun_)->name_);
 
-  instr_list.Append(
-      new assem::OperInstr(instr_str, new temp::TempList({rv}), args, nullptr));
+  instr_list.Append(new assem::OperInstr(instr_str, call_dst, args, nullptr));
 
   auto outgoing_cnt = size(this->args_->GetList());
   auto arg_reg_cnt = size(reg_manager->ArgRegs()->GetList());

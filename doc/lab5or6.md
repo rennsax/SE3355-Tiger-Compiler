@@ -11,7 +11,10 @@
 - [x] Rewrite MunchInMemory to generate more complicated memory representations, based on [instruction.py](../scripts/lab5_test/instruction.py).
   - [x] Further more: support `Imm(r1,r2,s)` form.
     Unused. See
-- [ ] The `dst` and `src` of some instructions should be considered again. Rewrite/Patch when necessary.
+- [x] The `dst` and `src` of some instructions should be considered again. Rewrite/Patch when necessary.
+  - `imulq`
+  - `idivq`
+  - `callq`
 
 ### Perplexed
 
@@ -23,6 +26,7 @@
 - [ ] Strength reduction: optimization for multiplication (maybe utilize the `lea` instruction).
 - [ ] Unreasonable: constants should be stored in 64-bit integers. See [tree.h](../src/tiger/translate/tree.h):446. I define a type `frame::Immediate` in [assem.h](../src/tiger/codegen/assem.h).
 - [ ] Inefficient if-then-else translation. See P165 on the textbook. Related function: `tr::makeIfThenElse`.
+- [ ] Optimization: do not store all arguments onto the stack when handling view shift. `X64Frame::X64Frame`. How does X64 handle it with different calling conventions?
 
 ### Learn someday
 

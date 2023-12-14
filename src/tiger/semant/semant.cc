@@ -265,7 +265,7 @@ type::Ty *SeqExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
 
 type::Ty *AssignExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
                                 int labelcount, err::ErrorMsg *errormsg) const {
-  // o.O Unexpected coupled?
+  // FIXME o.O Unexpected coupled?
   if (typeid(*this->var_) == typeid(absyn::SimpleVar)) {
     auto var_entry =
         venv->Look(static_cast<absyn::SimpleVar *>(this->var_)->sym_);

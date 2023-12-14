@@ -370,11 +370,11 @@ tr::Exp *makeBinaryExp(absyn::Oper oper, tr::Exp *left, tr::Exp *right) {
   if (oper == Oper::AND_OP) {
     // left & right => if left then right else 0
     return tr::makeIfThenElse(left, right, new tr::ExExp(new tree::ConstExp(0)),
-                              nullptr); // FIXME
+                              nullptr);
   } else if (oper == Oper::OR_OP) {
     // left | right => if left then 1 else right
     return tr::makeIfThenElse(left, new tr::ExExp(new tree::ConstExp(1)), right,
-                              nullptr); // FIXME
+                              nullptr);
   }
 
   assert(0);
@@ -400,7 +400,6 @@ tr::Exp *makeSequentialExp(std::list<tr::Exp *> expList) {
 
 [[nodiscard]] tr::Exp *makeIfThenElse(tr::Exp *test_e, tr::Exp *then_e,
                                       tr::Exp *else_e, err::ErrorMsg *err_msg) {
-  // FIXME not efficient? (P165)
   // A new register to store the result.
   auto result_temp = temp::TempFactory::NewTemp();
   auto cjump_stm = test_e->UnCx(err_msg);

@@ -80,7 +80,7 @@ struct ExpRefList {
    * The statement contains all the things that must be executed before the
    * expression-list.
    *
-   * The algorithm: omitted, see the book P180 someday. // TODO
+   * The algorithm: omitted, see the book P180 someday.
    *
    * @return tree::Stm*
    */

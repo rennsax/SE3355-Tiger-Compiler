@@ -82,6 +82,7 @@ struct Exp::MaybeConst {
 
 auto Exp::MunchIfConst(assem::InstrList &instr_list, std::string_view fs,
                        bool is_volatile) -> MaybeConst {
+  // A fallback resolution for other Exps (except for ConstExp and TempExp).
   return MaybeConst(this->Munch(instr_list, fs));
 }
 
@@ -97,9 +98,12 @@ auto ConstExp::MunchIfConst(assem::InstrList &instr_list, std::string_view fs,
 
 auto TempExp::MunchIfConst(assem::InstrList &instr_list, std::string_view fs,
                            bool is_volatile) -> MaybeConst {
-  if (!is_volatile && is_temp_exp(this)) {
+  if (!is_volatile) {
+    // Directly pass the register, because the parent node promises the context
+    // is non-volatile, i.e. the register will never be overwritten.
     return MaybeConst(deTempExp(this));
   } else {
+    // Pass the munch result, since it's always safe!
     return MaybeConst(this->Munch(instr_list, fs));
   }
 }
@@ -108,7 +112,7 @@ auto TempExp::MunchIfConst(assem::InstrList &instr_list, std::string_view fs,
  * @brief Return type of MemExp#MunchInMemory.
  *
  */
-struct InMemoryOperand {
+struct MemExp::InMemoryOperand {
   /// The operand string.
   std::string operand;
   /// All registers that need to be specified in the src_ to be filled in
@@ -119,53 +123,136 @@ struct InMemoryOperand {
   temp::TempList *src_regs;
 };
 
+/**
+ * @brief Munch a memory representation.
+ *
+ * The forms are:
+ *
+ *      Simplest form
+ *          form 1
+ *           MEM
+ *            |
+ *           PLUS
+ *           / \
+ *             CONST
+ *
+ *      form 1       form 2           form 3             form 4
+ *       MEM          MEM              MEM                MEM
+ *        |            |                |                  |
+ *       PLUS         PLUS             PLUS               PLUS
+ *       / \          / \            /      \           /      \
+ *         MUL          MUL        MEM       MUL      MEM       MUL      ...
+ *         / \          / \         |        / \       |        / \
+ *          CONST   CONST CONST   PULS        CONST  PULS  CONST  CONST
+ *                                 / \                / \
+ *                                  CONST              CONST
+ *
+ * e.g.  arr[i]       arr[2]
+ *
+ * @note We only handle the first three forms. The others can be munched out
+ * naturally.
+ *
+ * @par Why is the memory form Imm(r1, r2, s) never used?
+ * Because all arrays in Tiger are allocated in heap. This form of memory is
+ * convenient when dealing with C-type in-frame arrays.
+ *
+ * @sa tr::makeSubscript
+ *
+ * @tparam _ReturnTy InMemoryOperand
+ * @param instr_list
+ * @param fs
+ * @return @sa InMemoryOperand
+ */
 template <typename _ReturnTy>
 auto MemExp::MunchInMemory(assem::InstrList &instr_list, std::string_view fs)
     -> _ReturnTy {
+
+  /**
+   * @brief Represent a simple form of in-memory operand.
+   *
+   */
+  struct SimpleInMemory {
+    temp::Temp *reg;
+    frame::Immediate val;
+  };
+
+  // Handler to munch the simplest type of MemExp.
+  constexpr auto simpleMunch = [](MemExp *mem_exp, assem::InstrList &instr_list,
+                                  std::string_view fs) -> SimpleInMemory {
+    /**
+     * Only handles the simplest form:
+     *
+     *       MEM
+     *        |
+     *      PLUS
+     *       / \
+     *         CONST
+     */
+    assert(typeid(*mem_exp->exp_) == typeid(tree::BinopExp));
+    auto op_exp = static_cast<tree::BinopExp *>(mem_exp->exp_);
+    assert(op_exp->op_ == tree::BinOp::PLUS_OP);
+
+    auto reg_res = op_exp->left_->MunchIfConst(instr_list, fs, false);
+    auto const_res = op_exp->right_->MunchIfConst(instr_list, fs, false);
+    assert(!reg_res.is_const && const_res.is_const);
+
+    return {reg_res.u.reg, const_res.u.val};
+  };
 
   if (typeid(*this->exp_) == typeid(tree::BinopExp)) {
     auto op_exp = static_cast<tree::BinopExp *>(this->exp_);
     assert(op_exp->op_ == tree::BinOp::PLUS_OP);
 
-    // FIXME see below
+    if (typeid(*op_exp->right_) == typeid(tree::BinopExp)) {
+      // Subscript.
+      auto right_exp = static_cast<tree::BinopExp *>(op_exp->right_);
+      assert(right_exp->op_ == tree::BinOp::MUL_OP);
+      assert(is_const_exp(right_exp->right_));
+
+      auto s0_res = op_exp->left_->MunchIfConst(instr_list, fs, false);
+      assert(!s0_res.is_const);
+
+      auto s1_res = right_exp->left_->MunchIfConst(instr_list, fs, false);
+      // Expected to equal to word size (8).
+      auto per_bias = right_exp->right_->MunchIfConst(instr_list, fs).u.val;
+      assert(per_bias == frame::KX64WordSize);
+
+      if (s1_res.is_const) {
+        // form 2
+        std::stringstream ss{};
+        if (auto offset = s1_res.u.val * per_bias; offset != 0) {
+          ss << offset;
+        }
+        ss << "(`s0)";
+        return {ss.str(), new temp::TempList{s0_res.u.reg}};
+      } else {
+        // form 1
+        std::stringstream ss{};
+        ss << "(`s0,`s1," << per_bias << ")";
+        return {ss.str(), new temp::TempList{s0_res.u.reg, s1_res.u.reg}};
+      }
+    }
+
     {
-      if (!is_const_exp(op_exp->left_) && !is_const_exp(op_exp->right_)) {
-        auto lhs = op_exp->left_->MunchIfConst(instr_list, fs, true);
-        auto rhs = op_exp->right_->MunchIfConst(instr_list, fs, false);
-        instr_list.Append(new assem::OperInstr(
-            "addq `s1, `d0", new temp::TempList{lhs.u.reg},
-            new temp::TempList{lhs.u.reg, rhs.u.reg}, nullptr));
-        return {"(`s0)", new temp::TempList{lhs.u.reg}};
-      }
-    }
+      /**
+       *       MEM
+       *        |
+       *      PLUS
+       *       / \
+       *         CONST
+       */
+      SimpleInMemory simple_mem_res = simpleMunch(this, instr_list, fs);
 
-    auto lhs = op_exp->left_->MunchIfConst(instr_list, fs, false);
-    auto rhs = op_exp->right_->MunchIfConst(instr_list, fs, false);
-
-    if (!lhs.is_const && !rhs.is_const) {
-      // FIXME currently the lab doesn't support this "complicated" statement.
-      assert(0);
-      return {"(`s0, `s1, 1)", new temp::TempList{lhs.u.reg, rhs.u.reg}};
-    }
-    if (lhs.is_const) {
-      assert(!rhs.is_const);
       std::stringstream ss{};
-      if (lhs.u.val != 0) {
-        ss << lhs.u.val;
+      if (simple_mem_res.val != 0) {
+        ss << simple_mem_res.val;
       }
       ss << "(`s0)";
-      return {ss.str(), new temp::TempList{rhs.u.reg}};
+      return {ss.str(), new temp::TempList{simple_mem_res.reg}};
     }
-    if (rhs.is_const) {
-      std::stringstream ss{};
-      if (rhs.u.val != 0) {
-        ss << rhs.u.val;
-      }
-      ss << "(`s0)";
-      return {ss.str(), new temp::TempList{lhs.u.reg}};
-    }
-    assert(0);
   }
+  // In Tiger, no other cases.
+  assert(0);
 
   auto r = this->exp_->Munch(instr_list, fs);
   return {"(`s0)", new temp::TempList{r}};
@@ -209,8 +296,6 @@ void CjumpStm::Munch(assem::InstrList &instr_list, std::string_view fs) {
      * But the precedence counts. That is, this->left_ still need to be
      * evaluated before this->right_.
      */
-    // auto src_regs = new temp::TempList{};
-    // No dst regs
     /// enum CmpType { REG_REG, MEM_REG, REG_MEM, CON_REG } cmp_type;
 
     // We decide the format in advance, for the convenience of register
@@ -219,7 +304,7 @@ void CjumpStm::Munch(assem::InstrList &instr_list, std::string_view fs) {
       /// cmp_type = REG_MEM;
 
       auto in_mem_res = static_cast<tree::MemExp *>(this->left_)
-                            ->MunchInMemory<InMemoryOperand>(instr_list, fs);
+                            ->MunchInMemory(instr_list, fs);
       auto src_regs = in_mem_res.src_regs;
       std::stringstream ss{};
       ss << "cmpq `s" << src_regs->GetList().size() << ", "
@@ -246,7 +331,7 @@ void CjumpStm::Munch(assem::InstrList &instr_list, std::string_view fs) {
       if (is_mem_exp(this->right_)) {
         /// cmp_type = MEM_REG;
         auto in_mem_res = static_cast<tree::MemExp *>(this->right_)
-                              ->MunchInMemory<InMemoryOperand>(instr_list, fs);
+                              ->MunchInMemory(instr_list, fs);
         std::stringstream ss{};
         ss << "cmpq " << in_mem_res.operand << ", `s"
            << in_mem_res.src_regs->GetList().size();
@@ -287,7 +372,7 @@ void MoveStm::Munch(assem::InstrList &instr_list, std::string_view fs) {
 
     if (typeid(*this->src_) == typeid(tree::MemExp)) {
       auto in_mem_res = static_cast<tree::MemExp *>(this->src_)
-                            ->MunchInMemory<InMemoryOperand>(instr_list, fs);
+                            ->MunchInMemory(instr_list, fs);
       std::stringstream ss{};
       ss << "movq " << in_mem_res.operand << ", `d0";
       instr_list.Append(new assem::OperInstr(
@@ -307,8 +392,8 @@ void MoveStm::Munch(assem::InstrList &instr_list, std::string_view fs) {
                                new temp::TempList{maybe_const.u.reg}));
     }
   } else if (typeid(*this->dst_) == typeid(tree::MemExp)) {
-    auto in_mem_res = static_cast<tree::MemExp *>(this->dst_)
-                          ->MunchInMemory<InMemoryOperand>(instr_list, fs);
+    auto in_mem_res =
+        static_cast<tree::MemExp *>(this->dst_)->MunchInMemory(instr_list, fs);
     auto src_maybe_const = this->src_->MunchIfConst(instr_list, fs, false);
     if (src_maybe_const.is_const) {
       std::stringstream ss{};

@@ -281,7 +281,9 @@ public:
    * operator as the corresponding node of the tree.
    *
    * @param instr_list The list to accumulate the instructions.
-   * @param fs // TODO what's this?
+   * @param fs (P213) The assembly-language constant that denotes the frame
+   * size. For example, if the function is to be emitted as L14, @c fs may be @c
+   * L14_framesize.
    * @return temp::Temp The IR expression is evaluated, and the result (on the
    * node) is returned.
    */
@@ -362,6 +364,7 @@ public:
   canon::StmAndExp Canon() override;
   temp::Temp *Munch(assem::InstrList &instr_list, std::string_view fs) override;
 
+  struct InMemoryOperand;
   /**
    * @brief Munch the MEM expression, try the best to use less registers.
    *
@@ -373,7 +376,7 @@ public:
    * @param fs
    * @return Unspecified
    */
-  template <typename _ReturnTy>
+  template <typename _ReturnTy = InMemoryOperand>
   _ReturnTy MunchInMemory(assem::InstrList &instr_list, std::string_view fs);
 };
 

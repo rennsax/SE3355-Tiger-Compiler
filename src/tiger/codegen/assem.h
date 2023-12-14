@@ -52,6 +52,7 @@ public:
    * jump=NULL; other operations have a list of "target" labels to which they
    * may jump (this list must explicitly include the next instruction if it is
    * possible to fall through to it).
+   * This field is used in Lab6, for constructing control flow graph.
    *
    */
   Targets *jumps_;

@@ -37,8 +37,15 @@ private:
   std::list<std::pair<INodePtr, INodePtr>> move_list_;
 };
 
+/**
+ * @brief The result of liveness analysis.
+ *
+ */
 struct LiveGraph {
+  /// An undirected graph whose edges connect variables that interfere.
   IGraphPtr interf_graph;
+  /// A list of node-pairs that should be assigned the same register if
+  /// possible.
   MoveList *moves;
 
   LiveGraph(IGraphPtr interf_graph, MoveList *moves)
@@ -47,11 +54,21 @@ struct LiveGraph {
 
 class LiveGraphFactory {
 public:
+  /**
+   * @brief Take a flow graph and calculate liveness later.
+   *
+   * @param flowgraph
+   */
   explicit LiveGraphFactory(fg::FGraphPtr flowgraph)
       : flowgraph_(flowgraph), live_graph_(new IGraph(), new MoveList()),
         in_(std::make_unique<graph::Table<assem::Instr, temp::TempList>>()),
         out_(std::make_unique<graph::Table<assem::Instr, temp::TempList>>()),
         temp_node_map_(new tab::Table<temp::Temp, INode>()) {}
+  /**
+   * @brief Trigger liveness analysis.
+   *
+   * The result can be retrieved via #GetLiveGraph.
+   */
   void Liveness();
   LiveGraph GetLiveGraph() { return live_graph_; }
   tab::Table<temp::Temp, INode> *GetTempNodeMap() { return temp_node_map_; }
@@ -62,6 +79,7 @@ private:
 
   std::unique_ptr<graph::Table<assem::Instr, temp::TempList>> in_;
   std::unique_ptr<graph::Table<assem::Instr, temp::TempList>> out_;
+  /// Map temporary to the graph node
   tab::Table<temp::Temp, INode> *temp_node_map_;
 
   void LiveMap();

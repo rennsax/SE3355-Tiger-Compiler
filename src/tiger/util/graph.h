@@ -9,6 +9,16 @@ namespace graph {
 template <typename T> class Node;
 template <typename T> class NodeList;
 
+/**
+ * @brief A generalized class utility that represents a directed graph.
+ *
+ * @tparam T The structure type to store all additional information in each
+ * node. In Tiger compiler, for example, T might consist of an instruction,
+ * dataflow information (control flow analysis) or a temporary (liveness
+ * analysis).
+ * We can retrieve the information (inner type) via Node#NodeInfo.
+ * This way is efficient, but not so modular (P231).
+ */
 template <typename T> class Graph {
 public:
   // Make a new graph

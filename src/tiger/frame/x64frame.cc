@@ -147,6 +147,7 @@ void X64Frame::procEntryExit2(assem::InstrList &body) const {
   }
   printf("--------------------------------\n");
 
+  // QUESTION why not define them in `ret` statement?
   body.Append(
       new assem::OperInstr("", nullptr, reg_manager->ReturnSink(), nullptr));
 }
@@ -186,6 +187,14 @@ assem::Proc *X64Frame::procEntryExit3(assem::InstrList *body) const {
       }
       auto rsp = reg_manager->StackPointer();
       std::stringstream ss{};
+      // QUESTION won't register allocation affects the frame size?
+      // To my understand, there are a few scenarios:
+      // 1. No frame pointer, registers may spill.
+      // 2. Use frame pointer (X86), registers may spill.
+      // 3. User frame pointer (X86), registers never spill (no register
+      // pressure).
+      // Which case "exactly" needs the frame size to be calculated here but
+      // used in advance (in Munch, with the second argument)?
       ss << "subq $" << this->neg_local_offset_ << ", `d0";
       to_prepend.push_back(new assem::OperInstr(
           ss.str(), new temp::TempList{rsp}, new temp::TempList{rsp}, nullptr));

@@ -63,17 +63,17 @@ void FlowGraphFactory::AssemFlowGraph() {
 
 namespace assem {
 
-temp::TempList *LabelInstr::Def() const { return nullptr; }
+temp::TempList const *LabelInstr::Def() const { return nullptr; }
 
-temp::TempList *MoveInstr::Def() const { return this->dst_; }
+temp::TempList const *MoveInstr::Def() const { return this->dst_; }
 
-temp::TempList *OperInstr::Def() const { return this->dst_; }
+temp::TempList const *OperInstr::Def() const { return this->dst_; }
 
-temp::TempList *LabelInstr::Use() const { return nullptr; }
+temp::TempList const *LabelInstr::Use() const { return nullptr; }
 
-temp::TempList *MoveInstr::Use() const { return this->src_; }
+temp::TempList const *MoveInstr::Use() const { return this->src_; }
 
-temp::TempList *OperInstr::Use() const { return this->src_; }
+temp::TempList const *OperInstr::Use() const { return this->src_; }
 
 // namespace assem
 } // namespace assem

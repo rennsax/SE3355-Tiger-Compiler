@@ -81,4 +81,42 @@ void Map::DumpMap(FILE *out) {
   }
 }
 
+void TempList::swap(std::list<Temp *> &other) { this->temp_list_.swap(other); }
+
+static constexpr auto compare_temp = [](Temp *t1, Temp *t2) -> bool {
+  return t1->Int() < t2->Int();
+};
+
+void TempList::sort() {
+  std::vector<Temp *> temps(begin(temp_list_), end(temp_list_));
+  std::sort(begin(temps), end(temps), compare_temp);
+  temp_list_.clear();
+  std::copy(begin(temps), end(temps), back_inserter(temp_list_));
+}
+
+TempList temp_union(const TempList &temp_l1, const TempList &temp_l2) {
+  auto l1 = temp_l1.GetList();
+  auto l2 = temp_l2.GetList();
+  assert(std::is_sorted(begin(l1), end(l1), compare_temp));
+  assert(std::is_sorted(begin(l2), end(l2), compare_temp));
+
+  std::list<Temp *> dest{};
+  std::set_union(begin(l1), end(l1), begin(l2), end(l2), back_inserter(dest),
+                 compare_temp);
+  assert(std::max(l1.size(), l2.size()) <= dest.size());
+  return {std::move(dest)};
+}
+TempList temp_diff(const TempList &temp_l1, const TempList &temp_l2) {
+  auto l1 = temp_l1.GetList();
+  auto l2 = temp_l2.GetList();
+  assert(std::is_sorted(begin(l1), end(l1), compare_temp));
+  assert(std::is_sorted(begin(l2), end(l2), compare_temp));
+
+  std::list<Temp *> dest{};
+  std::set_difference(begin(l1), end(l1), begin(l2), end(l2),
+                      back_inserter(dest), compare_temp);
+  assert(l1.size() >= dest.size());
+  return {std::move(dest)};
+}
+
 } // namespace temp

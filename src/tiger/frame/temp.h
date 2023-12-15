@@ -95,6 +95,7 @@ public:
   explicit TempList(Temp *t) : temp_list_({t}) {}
   TempList(std::initializer_list<Temp *> list) : temp_list_(list) {}
   TempList(const std::list<Temp *> &others) : temp_list_(others) {}
+  TempList(std::list<Temp *> &&others) : temp_list_(std::move(others)) {}
   TempList() = default;
   void Append(Temp *t) { temp_list_.push_back(t); }
   void Concat(TempList *tail) {
@@ -105,9 +106,31 @@ public:
   [[nodiscard]] Temp *NthTemp(int i) const;
   [[nodiscard]] const std::list<Temp *> &GetList() const { return temp_list_; }
 
+  void swap(TempList &other) { swap(other.temp_list_); }
+  void sort();
+
 private:
   std::list<Temp *> temp_list_;
+
+  void swap(std::list<Temp *> &other);
 };
+
+/**
+ * @brief Union two temp lists.
+ *
+ * @param temp_l1 sorted.
+ * @param temp_l2 sorted.
+ * @return TempList
+ */
+TempList temp_union(const TempList &temp_l1, const TempList &temp_l2);
+/**
+ * @brief l1 \ l2.
+ *
+ * @param temp_l1 sorted.
+ * @param temp_l2 sorted.
+ * @return TempList
+ */
+TempList temp_diff(const TempList &temp_l1, const TempList &temp_l2);
 
 } // namespace temp
 

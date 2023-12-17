@@ -51,6 +51,7 @@ struct TempHash {
 
 using TempNodeSet = std::set<TempNode, TempCmp>;
 template <typename T> using TempNodeMap = std::map<TempNode, T, TempCmp>;
+using ColorMap = TempNodeMap<TempNode>;
 
 template <typename T, typename Cmp>
 std::set<T, Cmp> set_union(const std::set<T, Cmp> &lhs,
@@ -176,7 +177,8 @@ private:
   TempNodeSet spill_worklist{};
   TempNodeSet spilled_nodes{};
   TempNodeSet coalesced_nodes{};
-  TempNodeSet colored_nodes{};
+  /// Nodes successfully colored.
+  TempNodeSet colored_nodes{}; // TODO necessary? #color.count
   struct {
     const TempNodeSet &get_set() const & { return set_; }
     void push(TempNode n) {
@@ -188,6 +190,10 @@ private:
       stack_.pop();
       set_.erase(n);
       return n;
+    }
+    bool empty() const {
+      assert(set_.empty() == stack_.empty());
+      return set_.empty();
     }
 
   private:
@@ -229,6 +235,7 @@ private:
   /// When a move (u, v) is coalesced and v is put into coalesced_nodes, add
   /// alias[v] = u.
   TempNodeMap<TempNode> alias{};
+  ColorMap color{};
 
   // Final result.
   std::unique_ptr<ra::Result> result_{};
@@ -245,6 +252,8 @@ private:
   void coalesce();
   void freeze();
   void select_spill();
+  void assign_colors();
+  void rewrite_program();
 
   /**
    * @brief Helper functions.
@@ -286,6 +295,8 @@ private:
   static std::pair<TempNode, TempNode> translate_move_instr(assem::MoveInstr *);
 
   TempNode heuristic_select_spill() const;
+
+  static TempNodeSet retrieve_general_registers();
 };
 
 } // namespace ra

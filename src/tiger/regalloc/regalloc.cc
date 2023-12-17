@@ -149,10 +149,14 @@ void RegAllocator::build_interfere_graph() {
   // the interfere graph.
   for (const auto node : node_list) {
     auto temps = extract_temps(node->NodeInfo());
-    for (const auto temp : temps) {
+    for (const auto temp_args : temps) {
       std::apply(std::bind(&InterfereGraph::add_node, this->interfere_graph_,
                            std::placeholders::_1, std::placeholders::_2),
-                 temp);
+                 temp_args);
+      if (std::get<1>(temp_args)) {
+        auto temp = std::get<0>(temp_args);
+        color[temp] = temp;
+      }
     }
   }
 
@@ -369,6 +373,36 @@ void RegAllocator::select_spill() {
   REMOVE_WITH_CHECK(spill_worklist, m);
   INSERT_WITH_CHECK(simplify_worklist, m);
   freeze_moves(m);
+}
+
+void RegAllocator::assign_colors() {
+  while (!selected_stack.empty()) {
+    auto n = selected_stack.pop();
+    auto ok_colors = retrieve_general_registers();
+    for (const auto w : interfere_graph_.adj_of(n)) {
+      auto alias_w = get_alias(w);
+      if (colored_nodes.count(alias_w) || precolored.count(alias_w)) {
+        ok_colors.erase(color.at(alias_w));
+      }
+    }
+    if (ok_colors.empty()) {
+      spilled_nodes.insert(n);
+    } else {
+      colored_nodes.insert(n);
+      color[n] = *begin(ok_colors);
+    }
+  }
+  for (const auto n : coalesced_nodes) {
+    color[n] = color.at(get_alias(n));
+  }
+}
+
+auto RegAllocator::retrieve_general_registers() -> TempNodeSet {
+  TempNodeSet res{};
+  for (const auto reg : reg_manager->Registers()->GetList()) {
+    res.insert(reg);
+  }
+  return res;
 }
 
 } // namespace ra

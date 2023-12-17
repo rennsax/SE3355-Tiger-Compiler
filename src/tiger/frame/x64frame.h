@@ -47,7 +47,7 @@ public:
 #define REGISTER(sym) (regs_.at(static_cast<std::size_t>(Register::sym)))
   temp::TempList *Registers() override {
     auto res = new temp::TempList{};
-    for (int i = 0; i < static_cast<std::size_t>(Register::COUNT); ++i) {
+    for (int i = 0; i < static_cast<std::size_t>(Register::COUNT) - 2; ++i) {
       res->Append(regs_.at(i));
     }
     return res;

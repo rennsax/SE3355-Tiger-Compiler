@@ -124,9 +124,9 @@ private:
   TempNodeMap<std::size_t> degree_{};
 
   /// Machine registers, preassigned a color.
-  TempNodeSet& precolored;
+  TempNodeSet &precolored;
   /// Temporary registers, neither precolored nor processed.
-  TempNodeSet& initial;
+  TempNodeSet &initial;
 };
 
 class RegAllocator {
@@ -243,6 +243,8 @@ private:
   void make_worklist();
   void simplify();
   void coalesce();
+  void freeze();
+  void select_spill();
 
   /**
    * @brief Helper functions.
@@ -262,6 +264,7 @@ private:
   bool Briggs(TempNode u, TempNode v) const;
   bool Conservative(const TempNodeSet &nodes) const;
   void combine(TempNode u, TempNode v);
+  void freeze_moves(TempNode u);
 
   /**
    * @brief Other functions.
@@ -281,6 +284,8 @@ private:
   static bool is_precolored(TempNode n);
 
   static std::pair<TempNode, TempNode> translate_move_instr(assem::MoveInstr *);
+
+  TempNode heuristic_select_spill() const;
 };
 
 } // namespace ra

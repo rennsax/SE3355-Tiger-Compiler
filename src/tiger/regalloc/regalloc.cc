@@ -6,6 +6,17 @@
 
 #define NOT_EXIST_NODE                                                         \
   throw std::runtime_error("the given node doesn't exist in the graph")
+#define REMOVE_WITH_CHECK(set, node)                                           \
+  {                                                                            \
+    if (!set.erase(node))                                                      \
+      throw std::runtime_error("the given node doesn't exist in the set");     \
+  }
+#define INSERT_WITH_CHECK(set, node)                                           \
+  {                                                                            \
+    if (set.count(node))                                                       \
+      throw std::runtime_error("the given node already exists in the set");    \
+    set.insert(node);                                                          \
+  }
 
 extern frame::RegManager *reg_manager;
 
@@ -91,10 +102,30 @@ RegAllocator::translate_move_instr(assem::MoveInstr *instr) {
   return {n1, n2};
 }
 
+TempNode RegAllocator::heuristic_select_spill() const {
+  return *std::max_element(begin(spill_worklist), end(spill_worklist),
+                           [this](TempNode n1, TempNode n2) -> bool {
+                             return interfere_graph_.degree(n1) <
+                                    interfere_graph_.degree(n2);
+                           });
+}
+
 void RegAllocator::RegAlloc() {
   livenessAnalysis();
   build_interfere_graph();
-  // TODO
+  while (true) {
+    if (!simplify_worklist.empty()) {
+      simplify();
+    } else if (!worklist_moves.empty()) {
+      coalesce();
+    } else if (!freeze_worklist.empty()) {
+      freeze();
+    } else if (!spill_worklist.empty()) {
+      select_spill();
+    } else {
+      break;
+    }
+  }
 }
 
 void RegAllocator::livenessAnalysis() {
@@ -262,9 +293,9 @@ bool RegAllocator::Conservative(const TempNodeSet &nodes) const {
 
 void RegAllocator::combine(TempNode u, TempNode v) {
   if (freeze_worklist.count(v)) {
-    freeze_worklist.erase(v);
+    REMOVE_WITH_CHECK(freeze_worklist, v);
   } else {
-    spill_worklist.erase(v);
+    REMOVE_WITH_CHECK(spill_worklist, v);
   }
   coalesced_nodes.insert(v);
   alias[v] = u;
@@ -310,6 +341,34 @@ void RegAllocator::coalesce() {
   } else {
     active_moves.insert(instr);
   }
+}
+
+void RegAllocator::freeze() {
+  auto u = *begin(freeze_worklist);
+  freeze_worklist.erase(begin(freeze_worklist));
+  simplify_worklist.insert(u);
+  freeze_moves(u);
+}
+
+void RegAllocator::freeze_moves(TempNode u) {
+  for (const auto m : node_moves(u)) {
+    TempNode v{};
+    auto [x, y] = translate_move_instr(m);
+    if (get_alias(x) == get_alias(y)) {
+      v = get_alias(x);
+    } else {
+      v = get_alias(y);
+    }
+    REMOVE_WITH_CHECK(active_moves, m);
+    INSERT_WITH_CHECK(frozen_moves, m);
+  }
+}
+
+void RegAllocator::select_spill() {
+  auto m = heuristic_select_spill();
+  REMOVE_WITH_CHECK(spill_worklist, m);
+  INSERT_WITH_CHECK(simplify_worklist, m);
+  freeze_moves(m);
 }
 
 } // namespace ra

@@ -9,6 +9,7 @@
 #include "tiger/regalloc/color.h"
 #include "tiger/util/graph.h"
 #include <map>
+#include <queue>
 #include <set>
 #include <stack>
 #include <unordered_set>
@@ -80,12 +81,15 @@ std::set<T, Cmp> set_intersect(const std::set<T, Cmp> &lhs,
 
 class InterfereGraph {
 public:
-  InterfereGraph() = default;
+  InterfereGraph(TempNodeSet &precolored, TempNodeSet &initial)
+      : precolored{precolored}, initial{initial} {}
 
   void add_node(TempNode temp, bool is_precolored = false);
   void add_edge(TempNode u, TempNode v);
   std::size_t degree(TempNode v) const;
+  std::size_t &degree(TempNode v);
   const TempNodeSet &adj_of(TempNode v) const;
+  bool adj_set_contain(TempNode u, TempNode v) const;
 
   TempNodeSet &get_precolored() & { return precolored; }
   TempNodeSet &get_initial() & { return initial; }
@@ -120,9 +124,9 @@ private:
   TempNodeMap<std::size_t> degree_{};
 
   /// Machine registers, preassigned a color.
-  TempNodeSet precolored{};
+  TempNodeSet& precolored;
   /// Temporary registers, neither precolored nor processed.
-  TempNodeSet initial{};
+  TempNodeSet& initial;
 };
 
 class RegAllocator {
@@ -143,9 +147,6 @@ public:
   std::unique_ptr<ra::Result> TransferResult() { return std::move(result_); }
 
 private:
-  using MoveInstr = assem::MoveInstr *;
-  using MoveInstrSet = std::set<MoveInstr>;
-
   // TODO
 
   // Input.
@@ -201,6 +202,9 @@ private:
    * of these sets (after Build through the end of Main)
    */
 
+  using MoveInstr = assem::MoveInstr *;
+  using MoveInstrSet = std::set<MoveInstr>;
+
   /// Moves that have been coalesced.
   MoveInstrSet coalesced_moves{};
   /// Moves whose source and target interfere.
@@ -218,10 +222,13 @@ private:
    */
 
   /// adjSet, adjList, degree
-  InterfereGraph interfere_graph_{};
+  InterfereGraph interfere_graph_{initial, precolored};
 
   /// A mapping from a node to the list of moves it is associated with.
   TempNodeMap<MoveInstrSet> move_list{};
+  /// When a move (u, v) is coalesced and v is put into coalesced_nodes, add
+  /// alias[v] = u.
+  TempNodeMap<TempNode> alias{};
 
   // Final result.
   std::unique_ptr<ra::Result> result_{};
@@ -234,6 +241,8 @@ private:
   void livenessAnalysis();
   void build_interfere_graph();
   void make_worklist();
+  void simplify();
+  void coalesce();
 
   /**
    * @brief Helper functions.
@@ -245,6 +254,14 @@ private:
   bool move_related(TempNode n) const;
   /// Get all actual adjacent node for n.
   TempNodeSet adjacent(TempNode n) const;
+  void decrement_degree(TempNode m);
+  void enable_moves(const TempNodeSet &nodes);
+  TempNode get_alias(TempNode n) const;
+  void add_worklist(TempNode u);
+  bool OK(TempNode t, TempNode r) const;
+  bool Briggs(TempNode u, TempNode v) const;
+  bool Conservative(const TempNodeSet &nodes) const;
+  void combine(TempNode u, TempNode v);
 
   /**
    * @brief Other functions.
@@ -260,6 +277,10 @@ private:
    * second value indicates whether the temporary register is precolored.
    */
   static std::vector<std::tuple<TempNode, bool>> extract_temps(assem::Instr *);
+
+  static bool is_precolored(TempNode n);
+
+  static std::pair<TempNode, TempNode> translate_move_instr(assem::MoveInstr *);
 };
 
 } // namespace ra

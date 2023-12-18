@@ -444,13 +444,17 @@ void RegAllocator::freeze_moves(TempNode u) {
   for (const auto m : node_moves(u)) {
     TempNode v{};
     auto [x, y] = translate_move_instr(m);
-    if (get_alias(x) == get_alias(y)) {
+    if (get_alias(u) == get_alias(y)) {
       v = get_alias(x);
     } else {
       v = get_alias(y);
     }
-    REMOVE_WITH_CHECK(active_moves, m);
-    INSERT_WITH_CHECK(frozen_moves, m);
+    active_moves.erase(m);
+    frozen_moves.insert(m);
+    if (!move_related(v) && get_degree(v) < KColors) {
+      freeze_worklist.erase(v);
+      simplify_worklist.insert(v);
+    }
   }
 }
 

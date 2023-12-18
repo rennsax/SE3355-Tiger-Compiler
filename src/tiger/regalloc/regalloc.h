@@ -68,7 +68,7 @@ std::set<T, Cmp> set_union(const std::set<T, Cmp> &lhs,
                            const std::set<T, Cmp> &rhs) {
   std::set<T, Cmp> res{};
   std::set_union(lhs.begin(), lhs.end(), rhs.begin(), rhs.end(),
-                 std::inserter(res, res.begin()));
+                 std::inserter(res, res.begin()), Cmp{});
   return res;
 }
 
@@ -77,7 +77,7 @@ std::set<T, Cmp> set_diff(const std::set<T, Cmp> &lhs,
                           const std::set<T, Cmp> &rhs) {
   std::set<T, Cmp> res{};
   std::set_difference(lhs.begin(), lhs.end(), rhs.begin(), rhs.end(),
-                      std::inserter(res, res.begin()));
+                      std::inserter(res, res.begin()), Cmp{});
   return res;
 }
 
@@ -86,7 +86,7 @@ std::set<T, Cmp> set_intersect(const std::set<T, Cmp> &lhs,
                                const std::set<T, Cmp> &rhs) {
   std::set<T, Cmp> res{};
   std::set_intersection(lhs.begin(), lhs.end(), rhs.begin(), rhs.end(),
-                        std::inserter(res, res.begin()));
+                        std::inserter(res, res.begin()), Cmp{});
   return res;
 }
 

@@ -16,42 +16,6 @@ using INodeListPtr = graph::NodeList<temp::Temp> *;
 using IGraph = graph::Graph<temp::Temp>;
 using IGraphPtr = graph::Graph<temp::Temp> *;
 
-class [[deprecated]] MoveList {
-public:
-  MoveList() = default;
-
-  [[nodiscard]] const std::list<std::pair<INodePtr, INodePtr>> &GetList()
-      const {
-    return move_list_;
-  }
-  void Append(INodePtr src, INodePtr dst) { move_list_.emplace_back(src, dst); }
-  bool Contain(INodePtr src, INodePtr dst);
-  void Delete(INodePtr src, INodePtr dst);
-  void Prepend(INodePtr src, INodePtr dst) {
-    move_list_.emplace_front(src, dst);
-  }
-  MoveList *Union(MoveList * list);
-  MoveList *Intersect(MoveList * list);
-
-private:
-  std::list<std::pair<INodePtr, INodePtr>> move_list_;
-};
-
-/**
- * @brief The result of liveness analysis.
- *
- */
-struct [[deprecated]] LiveGraph {
-  /// An undirected graph whose edges connect variables that interfere.
-  IGraphPtr interf_graph;
-  /// A list of node-pairs that should be assigned the same register if
-  /// possible.
-  MoveList *moves;
-
-  LiveGraph(IGraphPtr interf_graph, MoveList * moves)
-      : interf_graph(interf_graph), moves(moves) {}
-};
-
 struct LivenessResult {
 public:
   LivenessResult() = default;

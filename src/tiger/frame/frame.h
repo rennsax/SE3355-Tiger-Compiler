@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <optional>
 
 #include "tiger/codegen/assem.h"
 #include "tiger/frame/temp.h"
@@ -107,6 +108,7 @@ public:
    * @return tree::Exp* mid IR expression
    */
   [[nodiscard]] virtual tree::Exp *toExp(tree::Exp *framePtr) const = 0;
+  virtual std::optional<int> get_offset() const = 0;
   virtual ~Access() = default;
 };
 

@@ -28,10 +28,22 @@ public:
   Result(Result &&result) = delete;
   Result &operator=(const Result &result) = delete;
   Result &operator=(Result &&result) = delete;
-  ~Result();
+  ~Result() {}
 };
 
 using TempNode = temp::Temp const *;
+struct TempCmp;
+using TempNodeSet = std::set<TempNode, TempCmp>;
+template <typename T> using TempNodeMap = std::map<TempNode, T, TempCmp>;
+using ColorMap = TempNodeMap<TempNode>;
+
+/**
+ * @brief Converts a linked list of TempNodes to a TempNodeSet.
+ *
+ * @param temp_list A pointer to the linked list of TempNodes.
+ * @return The TempNodeSet containing the TempNodes from the linked list.
+ */
+TempNodeSet from_temp_list(temp::TempList const *temp_list);
 
 struct TempCmp {
   bool operator()(TempNode lhs, TempNode rhs) const {
@@ -49,14 +61,12 @@ struct TempHash {
   std::size_t operator()(TempNode temp) const { return temp->Int() - 100; }
 };
 
-using TempNodeSet = std::set<TempNode, TempCmp>;
-template <typename T> using TempNodeMap = std::map<TempNode, T, TempCmp>;
-using ColorMap = TempNodeMap<TempNode>;
+// Set utilities.
 
 template <typename T, typename Cmp>
 std::set<T, Cmp> set_union(const std::set<T, Cmp> &lhs,
                            const std::set<T, Cmp> &rhs) {
-  std::set<T, Cmp> res{0, lhs.key_comp()};
+  std::set<T, Cmp> res{};
   std::set_union(lhs.begin(), lhs.end(), rhs.begin(), rhs.end(),
                  std::inserter(res, res.begin()));
   return res;
@@ -65,7 +75,7 @@ std::set<T, Cmp> set_union(const std::set<T, Cmp> &lhs,
 template <typename T, typename Cmp>
 std::set<T, Cmp> set_diff(const std::set<T, Cmp> &lhs,
                           const std::set<T, Cmp> &rhs) {
-  std::set<T, Cmp> res{0, lhs.key_comp()};
+  std::set<T, Cmp> res{};
   std::set_difference(lhs.begin(), lhs.end(), rhs.begin(), rhs.end(),
                       std::inserter(res, res.begin()));
   return res;
@@ -74,26 +84,30 @@ std::set<T, Cmp> set_diff(const std::set<T, Cmp> &lhs,
 template <typename T, typename Cmp>
 std::set<T, Cmp> set_intersect(const std::set<T, Cmp> &lhs,
                                const std::set<T, Cmp> &rhs) {
-  std::set<T, Cmp> res{0, lhs.key_comp()};
+  std::set<T, Cmp> res{};
   std::set_intersection(lhs.begin(), lhs.end(), rhs.begin(), rhs.end(),
                         std::inserter(res, res.begin()));
   return res;
 }
 
+/// Whether the register is a machine register ().
+bool is_precolored(TempNode n);
+
+/// Whether the instruction is a move instruction.
+bool is_move_instr(assem::Instr *);
+
 class InterfereGraph {
+  // FIXME merge this class into register allocator
 public:
   InterfereGraph(TempNodeSet &precolored, TempNodeSet &initial)
       : precolored{precolored}, initial{initial} {}
 
-  void add_node(TempNode temp, bool is_precolored = false);
+  [[deprecated]] void add_node(TempNode temp, bool is_precolored = false);
   void add_edge(TempNode u, TempNode v);
   std::size_t degree(TempNode v) const;
   std::size_t &degree(TempNode v);
   const TempNodeSet &adj_of(TempNode v) const;
   bool adj_set_contain(TempNode u, TempNode v) const;
-
-  TempNodeSet &get_precolored() & { return precolored; }
-  TempNodeSet &get_initial() & { return initial; }
 
 private:
   using BitMap_Underlying = std::pair<TempNode, TempNode>;
@@ -131,25 +145,18 @@ private:
 };
 
 class RegAllocator {
-  struct NodeAdditionalInfo {
-    // TODO
-  };
 
 public:
   static constexpr int KColors = static_cast<int>(frame::Register::COUNT);
 
-  RegAllocator(frame::Frame *frame, std::unique_ptr<cg::AssemInstr> assem_instr)
-      : assem_instr_{std::move(assem_instr)}, frame_{frame}, result_{nullptr} {
-    // TODO
-  }
+  RegAllocator(frame::Frame *frame,
+               std::unique_ptr<cg::AssemInstr> assem_instr);
 
   void RegAlloc();
 
   std::unique_ptr<ra::Result> TransferResult() { return std::move(result_); }
 
 private:
-  // TODO
-
   // Input.
   frame::Frame *frame_{};
   std::unique_ptr<cg::AssemInstr> assem_instr_{};
@@ -166,8 +173,10 @@ private:
    */
 
   /// Machine registers, preassigned a color.
+  /// Initialized at the very beginning. @sa #ReAllocator
   TempNodeSet precolored{};
   /// Temporary registers, neither precolored nor processed.
+  /// Initialized at the very beginning. @sa #ReAllocator
   TempNodeSet initial{};
   /// low-degree non-move-related nodes.
   TempNodeSet simplify_worklist{};
@@ -178,7 +187,7 @@ private:
   TempNodeSet spilled_nodes{};
   TempNodeSet coalesced_nodes{};
   /// Nodes successfully colored.
-  TempNodeSet colored_nodes{}; // TODO necessary? #color.count
+  TempNodeSet colored_nodes{};
   struct {
     const TempNodeSet &get_set() const & { return set_; }
     void push(TempNode n) {
@@ -235,6 +244,8 @@ private:
   /// When a move (u, v) is coalesced and v is put into coalesced_nodes, add
   /// alias[v] = u.
   TempNodeMap<TempNode> alias{};
+  /// The color assigned to a node. For precolored nodes this is initialized at
+  /// the very beginning.
   ColorMap color{};
 
   // Final result.
@@ -254,6 +265,7 @@ private:
   void select_spill();
   void assign_colors();
   void rewrite_program();
+  void make_result();
 
   /**
    * @brief Helper functions.
@@ -280,23 +292,33 @@ private:
    *
    */
 
-  /// Whether the instruction is a move instruction.
-  static bool is_move_instr(assem::Instr *);
   /**
    * @brief Extract temps from the instruction.
    *
    * @return std::vector<std::tuple<TempNode, bool>> A list of temporaries. The
    * second value indicates whether the temporary register is precolored.
    */
-  static std::vector<std::tuple<TempNode, bool>> extract_temps(assem::Instr *);
+  [[deprecated]] static std::vector<std::tuple<TempNode, bool>>
+  extract_temps(assem::Instr *);
 
-  static bool is_precolored(TempNode n);
-
+  /**
+   * Translates a MoveInstr into a pair of TempNodes.
+   *
+   * @param moveInstr The MoveInstr to be translated.
+   * @return A pair of TempNodes representing the translated MoveInstr.
+   */
   static std::pair<TempNode, TempNode> translate_move_instr(assem::MoveInstr *);
 
+  /**
+   * Selects a spill candidate using a heuristic algorithm.
+   *
+   * @return The TempNode representing the selected spill candidate.
+   */
   TempNode heuristic_select_spill() const;
 
   static TempNodeSet retrieve_general_registers();
+
+  static frame::Immediate drag_offset(frame::Access *access);
 };
 
 } // namespace ra

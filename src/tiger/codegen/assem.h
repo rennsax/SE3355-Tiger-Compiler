@@ -35,6 +35,8 @@ public:
   virtual void Print(FILE *out, temp::Map *m) const = 0;
   [[nodiscard]] virtual temp::TempList const *Def() const = 0;
   [[nodiscard]] virtual temp::TempList const *Use() const = 0;
+  virtual void replace_def(temp::Temp *from, temp::Temp *to) = 0;
+  virtual void replace_use(temp::Temp *from, temp::Temp *to) = 0;
 };
 
 class OperInstr : public Instr {
@@ -64,6 +66,8 @@ public:
   void Print(FILE *out, temp::Map *m) const override;
   [[nodiscard]] temp::TempList const *Def() const override;
   [[nodiscard]] temp::TempList const *Use() const override;
+  void replace_def(temp::Temp *from, temp::Temp *to) override;
+  void replace_use(temp::Temp *from, temp::Temp *to) override;
 };
 
 /**
@@ -83,6 +87,8 @@ public:
   void Print(FILE *out, temp::Map *m) const override;
   [[nodiscard]] temp::TempList const *Def() const override;
   [[nodiscard]] temp::TempList const *Use() const override;
+  void replace_def(temp::Temp *from, temp::Temp *to) override { assert(0); }
+  void replace_use(temp::Temp *from, temp::Temp *to) override { assert(0); }
 };
 
 /**
@@ -104,6 +110,8 @@ public:
   void Print(FILE *out, temp::Map *m) const override;
   [[nodiscard]] temp::TempList const *Def() const override;
   [[nodiscard]] temp::TempList const *Use() const override;
+  void replace_def(temp::Temp *from, temp::Temp *to) override;
+  void replace_use(temp::Temp *from, temp::Temp *to) override;
 };
 
 class InstrList {
@@ -120,6 +128,7 @@ public:
   [[nodiscard]] const std::list<Instr *> &GetList() const {
     return instr_list_;
   }
+  std::list<Instr *> &GetList() { return instr_list_; }
   void Concat(std::list<Instr *> tail) {
     for (auto instr : tail) {
       instr_list_.push_back(instr);

@@ -105,6 +105,7 @@ public:
   }
   [[nodiscard]] Temp *NthTemp(int i) const;
   [[nodiscard]] const std::list<Temp *> &GetList() const { return temp_list_; }
+  [[nodiscard]] std::list<Temp *> &GetList() { return temp_list_; }
 
   void swap(TempList &other) { swap(other.temp_list_); }
   void sort();

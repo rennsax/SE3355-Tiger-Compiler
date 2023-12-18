@@ -26,6 +26,7 @@ public:
     return new tree::MemExp(new tree::BinopExp(tree::BinOp::PLUS_OP, framePtr,
                                                new tree::ConstExp(offset)));
   }
+  std::optional<int> get_offset() const override { return offset; }
 };
 
 class InRegAccess : public Access {
@@ -38,6 +39,7 @@ public:
     // Independent with the frame pointer, so unused.
     return new tree::TempExp(reg);
   }
+  std::optional<int> get_offset() const override { return std::nullopt; }
 };
 
 frame::Frame *newFrame(temp::Label *f, const std::list<bool> &formals) {

@@ -20,7 +20,47 @@
 
 extern frame::RegManager *reg_manager;
 
+namespace assem {
+
+void MoveInstr::replace_use(temp::Temp *from, temp::Temp *to) {
+  for (temp::Temp *&temp : src_->GetList()) {
+    if (temp == from) {
+      temp = to;
+    }
+  }
+}
+void MoveInstr::replace_def(temp::Temp *from, temp::Temp *to) {
+  for (temp::Temp *&temp : dst_->GetList()) {
+    if (temp == from) {
+      temp = to;
+    }
+  }
+}
+void OperInstr::replace_use(temp::Temp *from, temp::Temp *to) {
+  for (temp::Temp *&temp : src_->GetList()) {
+    if (temp == from) {
+      temp = to;
+    }
+  }
+}
+void OperInstr::replace_def(temp::Temp *from, temp::Temp *to) {
+  for (temp::Temp *&temp : dst_->GetList()) {
+    if (temp == from) {
+      temp = to;
+    }
+  }
+}
+} // namespace assem
+
 namespace ra {
+
+TempNodeSet from_temp_list(temp::TempList const *temp_list) {
+  TempNodeSet res{};
+  for (const auto temp : temp_list->GetList()) {
+    res.insert(temp);
+  }
+  return res;
+}
 
 std::size_t
 InterfereGraph::hash_temp_pair_(const BitMap_Underlying &temp_pair) {
@@ -30,7 +70,8 @@ InterfereGraph::hash_temp_pair_(const BitMap_Underlying &temp_pair) {
   return std::hash<std::string>{}(ss.str());
 }
 
-void InterfereGraph::add_node(TempNode temp, bool is_precolored) {
+[[deprecated]] void InterfereGraph::add_node(TempNode temp,
+                                             bool is_precolored) {
   if (precolored.count(temp) || initial.count(temp)) {
     return;
   }
@@ -50,11 +91,11 @@ void InterfereGraph::add_edge(TempNode u, TempNode v) {
   }
   adjSet_.insert(std::make_pair(u, v));
   adjSet_.insert(std::make_pair(v, u));
-  if (!precolored.count(u)) {
+  if (!is_precolored(u)) {
     adjList_[u].insert(v);
     degree_[u]++;
   }
-  if (!precolored.count(v)) {
+  if (!is_precolored(u)) {
     adjList_[v].insert(u);
     degree_[v]++;
   }
@@ -71,11 +112,11 @@ bool InterfereGraph::adj_set_contain(TempNode u, TempNode v) const {
   return adjSet_.count({u, v}) == 1;
 }
 
-bool RegAllocator::is_move_instr(assem::Instr *instr) {
+bool is_move_instr(assem::Instr *instr) {
   return typeid(*instr) == typeid(assem::MoveInstr);
 }
 
-std::vector<std::tuple<TempNode, bool>>
+[[deprecated]] std::vector<std::tuple<TempNode, bool>>
 RegAllocator::extract_temps(assem::Instr *assem) {
   std::vector<std::tuple<TempNode, bool>> res{};
 
@@ -91,14 +132,14 @@ RegAllocator::extract_temps(assem::Instr *assem) {
   return res;
 }
 
-bool RegAllocator::is_precolored(TempNode n) {
+bool is_precolored(TempNode n) {
   return reg_manager->temp_map_->Look(const_cast<temp::Temp *>(n)) != nullptr;
 }
 
 std::pair<TempNode, TempNode>
 RegAllocator::translate_move_instr(assem::MoveInstr *instr) {
   TempNode n1 = instr->src_->GetList().front();
-  TempNode n2 = instr->src_->GetList().front();
+  TempNode n2 = instr->dst_->GetList().front();
   return {n1, n2};
 }
 
@@ -126,6 +167,14 @@ void RegAllocator::RegAlloc() {
       break;
     }
   }
+  assign_colors();
+  if (!spilled_nodes.empty()) {
+    rewrite_program();
+    RegAlloc();
+  } else {
+    // End recursive
+    make_result();
+  }
 }
 
 void RegAllocator::livenessAnalysis() {
@@ -144,21 +193,6 @@ void RegAllocator::build_interfere_graph() {
   // Here we just treat each instruction as a node and a basic block, which
   // makes things simple. See P223.
   auto node_list = this->flow_graph_->Nodes()->GetList();
-
-  // Create all nodes. This step also initialize `initial` and `precolored` in
-  // the interfere graph.
-  for (const auto node : node_list) {
-    auto temps = extract_temps(node->NodeInfo());
-    for (const auto temp_args : temps) {
-      std::apply(std::bind(&InterfereGraph::add_node, this->interfere_graph_,
-                           std::placeholders::_1, std::placeholders::_2),
-                 temp_args);
-      if (std::get<1>(temp_args)) {
-        auto temp = std::get<0>(temp_args);
-        color[temp] = temp;
-      }
-    }
-  }
 
   for (auto block : node_list) {
     temp::TempList live(
@@ -397,12 +431,121 @@ void RegAllocator::assign_colors() {
   }
 }
 
-auto RegAllocator::retrieve_general_registers() -> TempNodeSet {
-  TempNodeSet res{};
-  for (const auto reg : reg_manager->Registers()->GetList()) {
-    res.insert(reg);
+void RegAllocator::rewrite_program() {
+  // Map the spilled temps to their new memory locations.
+  TempNodeMap<frame::Access *> access_map{};
+  // Allocate new memory locations for spilled temps.
+  for (const auto n : spilled_nodes) {
+    auto access = frame_->allocateLocal(true);
+    access_map[n] = access;
   }
-  return res;
+
+  TempNodeSet new_temps{};
+  auto instr_list = assem_instr_->GetInstrList()->GetList();
+
+  // Rewrite
+  for (auto it = begin(instr_list); it != end(instr_list); ++it) {
+    auto instr = *it;
+    int insert_before = 0;
+    int insert_next = 0;
+    // Check use
+    {
+      TempNodeSet use_set = from_temp_list(instr->Use());
+      auto conflict_uses = set_intersect(use_set, spilled_nodes);
+      for (const auto temp : conflict_uses) {
+        auto r = temp::TempFactory::NewTemp();
+        new_temps.insert(r);
+        instr->replace_use(const_cast<temp::Temp *>(temp), r);
+
+        {
+          frame::Immediate offset = drag_offset(access_map.at(temp));
+          std::stringstream ss{};
+          ss << "movq ";
+          if (offset != 0) {
+            ss << offset;
+          }
+          // Fetch the value out from memory before each use.
+          ss << "(`s0), `d0";
+          auto new_instr = new assem::OperInstr(
+              ss.str(), new temp::TempList{r},
+              new temp::TempList{reg_manager->FramePointer()}, nullptr);
+          instr_list.insert(next(it), new_instr);
+          insert_before++;
+        }
+      }
+    }
+
+    // Check def.
+    {
+      TempNodeSet def_set = from_temp_list(instr->Def());
+      auto conflict_defs = set_intersect(def_set, spilled_nodes);
+      for (const auto temp : conflict_defs) {
+        auto r = temp::TempFactory::NewTemp();
+        new_temps.insert(r);
+        instr->replace_def(const_cast<temp::Temp *>(temp), r);
+
+        {
+          frame::Immediate offset = drag_offset(access_map.at(temp));
+          std::stringstream ss{};
+          ss << "movq ";
+          // Store the value into memory after each def.
+          ss << "`s0, ";
+          if (offset != 0) {
+            ss << offset;
+          }
+          ss << "(`s1)";
+          auto new_instr = new assem::OperInstr(
+              ss.str(), nullptr,
+              new temp::TempList{r, reg_manager->FramePointer()}, nullptr);
+          instr_list.insert(it, new_instr);
+          insert_next++;
+        }
+      }
+    }
+    // Move the iterator, in case of infinite loop.
+    advance(it, insert_next);
+  }
+
+  spilled_nodes.clear();
+  initial = set_union(colored_nodes, coalesced_nodes);
+  colored_nodes.clear();
+  coalesced_nodes.clear();
 }
 
+void RegAllocator::make_result() {
+  temp::Map *colored = temp::Map::Empty();
+  for (auto [temp, reg] : color) {
+    colored->Enter(const_cast<temp::Temp *>(temp),
+                   reg_manager->temp_map_->Look(const_cast<temp::Temp *>(reg)));
+  }
+  result_.reset(new Result(colored, assem_instr_->GetInstrList()));
+}
+
+auto RegAllocator::retrieve_general_registers() -> TempNodeSet {
+  return from_temp_list(reg_manager->Registers());
+}
+
+frame::Immediate RegAllocator::drag_offset(frame::Access *access) {
+  assert(access->get_offset().has_value());
+  return access->get_offset().value();
+}
+
+RegAllocator::RegAllocator(frame::Frame *frame,
+                           std::unique_ptr<cg::AssemInstr> assem_instr)
+    : assem_instr_{std::move(assem_instr)}, frame_{frame}, result_{nullptr} {
+
+  auto instr_list = assem_instr_->GetInstrList()->GetList();
+
+  for (const auto instr : instr_list) {
+    auto all_temps = temp::temp_union(*instr->Def(), *instr->Use());
+    for (const auto temp : all_temps.GetList()) {
+      if (is_precolored(temp)) {
+        INSERT_WITH_CHECK(precolored, temp);
+        color[temp] = temp;
+      } else {
+        INSERT_WITH_CHECK(initial, temp);
+      }
+    }
+  }
+}
 } // namespace ra

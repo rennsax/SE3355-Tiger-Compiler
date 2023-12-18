@@ -103,7 +103,9 @@ frame::Access *X64Frame::allocateLocal(bool escape) {
 tree::Stm *X64Frame::procEntryExit1(tree::Stm *stm) const {
 
   // Move all callee-save registers to fresh registers.
-  auto callee_saves = reg_manager->CalleeSaves()->GetList();
+  std::list<temp::Temp *> callee_saves = reg_manager->CalleeSaves()->GetList();
+  // RBP has been handled!
+  callee_saves.remove(reg_manager->FramePointer());
   std::vector<temp::Temp *> callee_tmps{};
   for (auto reg : callee_saves) {
     auto r = temp::TempFactory::NewTemp();

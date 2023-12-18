@@ -251,6 +251,16 @@ auto MemExp::MunchInMemory(assem::InstrList &instr_list, std::string_view fs)
       return {ss.str(), new temp::TempList{simple_mem_res.reg}};
     }
   }
+  if (typeid(*this->exp_) == typeid(tree::TempExp)) {
+    // FIXME doc
+    /**
+     *       MEM
+     *        |
+     *      TEMP
+     */
+    auto temp_exp = static_cast<tree::TempExp *>(this->exp_);
+    return {std::string{"`s0"}, new temp::TempList{temp_exp->temp_}};
+  }
   // In Tiger, no other cases.
   assert(0);
 

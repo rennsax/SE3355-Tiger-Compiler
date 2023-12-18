@@ -5,7 +5,7 @@ namespace fg {
 template <typename T> T *unwrap_instr(assem::Instr *instr) {
   static_assert(std::is_base_of_v<assem::Instr, T>,
                 "T must be a derived type of assem::Instr");
-  if (typeid(*instr) == typeid(T)) {
+  if (typeid(*instr) != typeid(T)) {
     return nullptr;
   }
   return static_cast<T *>(instr);
@@ -63,17 +63,29 @@ void FlowGraphFactory::AssemFlowGraph() {
 
 namespace assem {
 
-temp::TempList const *LabelInstr::Def() const { return nullptr; }
+temp::TempList const *enable_non_null(temp::TempList const *temp_list) {
+  return temp_list ? temp_list : new temp::TempList{};
+}
 
-temp::TempList const *MoveInstr::Def() const { return this->dst_; }
+temp::TempList const *LabelInstr::Def() const { return new temp::TempList{}; }
 
-temp::TempList const *OperInstr::Def() const { return this->dst_; }
+temp::TempList const *LabelInstr::Use() const { return new temp::TempList{}; }
 
-temp::TempList const *LabelInstr::Use() const { return nullptr; }
+temp::TempList const *MoveInstr::Def() const {
+  return enable_non_null(this->dst_);
+}
 
-temp::TempList const *MoveInstr::Use() const { return this->src_; }
+temp::TempList const *OperInstr::Def() const {
+  return enable_non_null(this->dst_);
+}
 
-temp::TempList const *OperInstr::Use() const { return this->src_; }
+temp::TempList const *MoveInstr::Use() const {
+  return enable_non_null(this->src_);
+}
+
+temp::TempList const *OperInstr::Use() const {
+  return enable_non_null(this->src_);
+}
 
 // namespace assem
 } // namespace assem

@@ -105,6 +105,11 @@ std::size_t InterfereGraph::degree(TempNode v) const { return degree_.at(v); }
 std::size_t &InterfereGraph::degree(TempNode v) { return degree_.at(v); }
 
 auto InterfereGraph::adj_of(TempNode v) const -> const TempNodeSet & {
+  // Fallback for an empty adj set.
+  static TempNodeSet empty_set{};
+  if (adjList_.count(v) == 0) {
+    return empty_set;
+  }
   return adjList_.at(v);
 }
 
@@ -154,6 +159,7 @@ TempNode RegAllocator::heuristic_select_spill() const {
 void RegAllocator::RegAlloc() {
   livenessAnalysis();
   build_interfere_graph();
+  make_worklist();
   while (true) {
     if (!simplify_worklist.empty()) {
       simplify();
@@ -213,13 +219,16 @@ void RegAllocator::build_interfere_graph() {
         }
       }
       worklist_moves.insert(move_instr);
-
-      // Add interference edges.
-      live = temp_union(live, *move_instr->Def());
-      for (const auto temp_def : move_instr->Def()->GetList()) {
-        for (const auto temp_out : live.GetList()) {
-          this->interfere_graph_.add_edge(temp_def, temp_out);
-        }
+    }
+    // Add interference edges.
+    {
+      temp::TempList instr_def(*instr->Def());
+      instr_def.sort();
+      live = temp_union(live, instr_def);
+    }
+    for (const auto temp_def : instr->Def()->GetList()) {
+      for (const auto temp_out : live.GetList()) {
+        this->interfere_graph_.add_edge(temp_def, temp_out);
       }
     }
   }
@@ -239,13 +248,17 @@ void RegAllocator::make_worklist() {
 }
 
 auto RegAllocator::node_moves(TempNode n) const -> MoveInstrSet {
+  if (move_list.count(n) == 0) {
+    return {};
+  }
+
   // tmp := union active_moves and worklist_moves
   MoveInstrSet tmp = set_union(active_moves, worklist_moves);
 
   const auto &moves = move_list.at(n);
 
   // intersect move_list[n] and tmp
-  auto res = set_intersect(move_list.at(n), tmp);
+  auto res = set_intersect(moves, tmp);
   return res;
 }
 
@@ -333,7 +346,7 @@ void RegAllocator::combine(TempNode u, TempNode v) {
   if (freeze_worklist.count(v)) {
     REMOVE_WITH_CHECK(freeze_worklist, v);
   } else {
-    REMOVE_WITH_CHECK(spill_worklist, v);
+    spill_worklist.erase(v);
   }
   coalesced_nodes.insert(v);
   alias[v] = u;
@@ -515,8 +528,10 @@ void RegAllocator::rewrite_program() {
 void RegAllocator::make_result() {
   temp::Map *colored = temp::Map::Empty();
   for (auto [temp, reg] : color) {
-    colored->Enter(const_cast<temp::Temp *>(temp),
-                   reg_manager->temp_map_->Look(const_cast<temp::Temp *>(reg)));
+    auto target_color =
+        reg_manager->temp_map_->Look(const_cast<temp::Temp *>(reg));
+
+    colored->Enter(const_cast<temp::Temp *>(temp), target_color);
   }
   result_.reset(new Result(colored, assem_instr_->GetInstrList()));
 }
@@ -537,8 +552,15 @@ RegAllocator::RegAllocator(frame::Frame *frame,
   auto instr_list = assem_instr_->GetInstrList()->GetList();
 
   for (const auto instr : instr_list) {
-    auto all_temps = temp::temp_union(*instr->Def(), *instr->Use());
+    temp::TempList def(*instr->Def());
+    temp::TempList use(*instr->Use());
+    def.sort();
+    use.sort();
+    auto all_temps = temp::temp_union(def, use);
     for (const auto temp : all_temps.GetList()) {
+      if (precolored.count(temp) || initial.count(temp)) {
+        continue;
+      }
       if (is_precolored(temp)) {
         INSERT_WITH_CHECK(precolored, temp);
         color[temp] = temp;

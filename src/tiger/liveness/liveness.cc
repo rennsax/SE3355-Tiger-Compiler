@@ -54,6 +54,7 @@ void LiveGraphFactory::LiveMap() {
 
   bool has_change = false;
   do {
+    has_change = false;
     // Reverse
     for (auto it = rbegin(node_list); it != rend(node_list); ++it) {
       auto node = *it;

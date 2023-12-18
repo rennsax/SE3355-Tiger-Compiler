@@ -68,15 +68,14 @@ void LiveGraphFactory::LiveMap() {
         temp::TempList dest{};
 
         for (auto s : node->Succ()->GetList()) {
-          auto s_out = this->get_out_(s);
+          auto s_out = this->get_in_(s);
           dest = temp_union(dest, *s_out);
         }
 
         if (dest.GetList().size() > cur_out->GetList().size()) {
           has_change = true;
+          cur_out->swap(dest);
         }
-
-        cur_out->swap(dest);
       }
 
       // in[n] = use[n] U (out[n] \ def[n])
@@ -92,9 +91,8 @@ void LiveGraphFactory::LiveMap() {
         assert(dest.GetList().size() >= cur_in->GetList().size());
         if (dest.GetList().size() > cur_in->GetList().size()) {
           has_change = true;
+          cur_in->swap(dest);
         }
-
-        cur_in->swap(dest);
       }
     }
 

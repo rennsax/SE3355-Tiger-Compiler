@@ -146,7 +146,7 @@ private:
 class RegAllocator {
 
 public:
-  static constexpr int KColors = static_cast<int>(frame::Register::COUNT);
+  static constexpr int KColors = static_cast<int>(frame::Register::COUNT) - 2;
 
   RegAllocator(frame::Frame *frame,
                std::unique_ptr<cg::AssemInstr> assem_instr);

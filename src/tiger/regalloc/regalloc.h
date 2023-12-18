@@ -105,7 +105,7 @@ public:
   [[deprecated]] void add_node(TempNode temp, bool is_precolored = false);
   void add_edge(TempNode u, TempNode v);
   std::size_t degree(TempNode v) const;
-  std::size_t &degree(TempNode v);
+  void decrease_degree(TempNode v);
   const TempNodeSet &adj_of(TempNode v) const;
   bool adj_set_contain(TempNode u, TempNode v) const;
 

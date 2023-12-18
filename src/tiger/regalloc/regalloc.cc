@@ -6,6 +6,8 @@
 
 #define NOT_EXIST_NODE                                                         \
   throw std::runtime_error("the given node doesn't exist in the graph")
+
+#ifndef NDEBUG
 #define REMOVE_WITH_CHECK(set, node)                                           \
   {                                                                            \
     if (!set.erase(node))                                                      \
@@ -17,6 +19,12 @@
       throw std::runtime_error("the given node already exists in the set");    \
     set.insert(node);                                                          \
   }
+#else
+#define REMOVE_WITH_CHECK(set, node)                                           \
+  { set.erase(node); }
+#define INSERT_WITH_CHECK(set, node)                                           \
+  { set.insert(node); }
+#endif
 
 extern frame::RegManager *reg_manager;
 
@@ -95,14 +103,18 @@ void InterfereGraph::add_edge(TempNode u, TempNode v) {
     adjList_[u].insert(v);
     degree_[u]++;
   }
-  if (!is_precolored(u)) {
+  if (!is_precolored(v)) {
     adjList_[v].insert(u);
     degree_[v]++;
   }
 }
 
-std::size_t InterfereGraph::degree(TempNode v) const { return degree_.at(v); }
-std::size_t &InterfereGraph::degree(TempNode v) { return degree_.at(v); }
+std::size_t InterfereGraph::degree(TempNode v) const {
+  if (is_precolored(v) || degree_.count(v) == 0) {
+    return std::numeric_limits<std::size_t>::max();
+  }
+  return degree_.at(v);
+}
 
 auto InterfereGraph::adj_of(TempNode v) const -> const TempNodeSet & {
   // Fallback for an empty adj set.
@@ -115,6 +127,11 @@ auto InterfereGraph::adj_of(TempNode v) const -> const TempNodeSet & {
 
 bool InterfereGraph::adj_set_contain(TempNode u, TempNode v) const {
   return adjSet_.count({u, v}) == 1;
+}
+
+void InterfereGraph::decrease_degree(TempNode v) {
+  assert(degree_.count(v));
+  degree_[v]--;
 }
 
 bool is_move_instr(assem::Instr *instr) {
@@ -208,9 +225,10 @@ void RegAllocator::build_interfere_graph() {
 
     if (is_move_instr(instr)) {
       auto move_instr = static_cast<assem::MoveInstr *>(instr);
+      assert(move_instr->Def()->GetList().size() == 1);
+      assert(move_instr->Use()->GetList().size() == 1);
+
       live = temp_diff(live, *move_instr->Use());
-      assert(instr->Def()->GetList().size() == 1);
-      assert(instr->Use()->GetList().size() == 1);
 
       {
         auto def_and_use = temp_union(*move_instr->Def(), *move_instr->Use());
@@ -283,8 +301,11 @@ void RegAllocator::simplify() {
   }
 }
 void RegAllocator::decrement_degree(TempNode m) {
+  if (is_precolored(m)) {
+    return;
+  }
   auto d = interfere_graph_.degree(m);
-  interfere_graph_.degree(m) = d - 1;
+  interfere_graph_.decrease_degree(m);
   if (d == KColors) {
     {
       auto to_enable_move = adjacent(m);
@@ -305,7 +326,7 @@ void RegAllocator::enable_moves(const TempNodeSet &nodes) {
     for (const auto m : node_moves(n)) {
       if (active_moves.count(m)) {
         active_moves.erase(m);
-        worklist_moves.insert(m);
+        INSERT_WITH_CHECK(worklist_moves, m);
       }
     }
   }
@@ -377,7 +398,8 @@ void RegAllocator::coalesce() {
   if (u == v) {
     coalesced_moves.insert(instr);
     add_worklist(u);
-  } else if (precolored.count(v) || interfere_graph_.adj_set_contain(u, v)) {
+  } else if (precolored.count(v) /* both are precolored */ ||
+             interfere_graph_.adj_set_contain(u, v) /* interfered MOVE */) {
     constrained_moves.insert(instr);
     add_worklist(u);
     add_worklist(v);
@@ -455,7 +477,8 @@ void RegAllocator::rewrite_program() {
   }
 
   TempNodeSet new_temps{};
-  auto instr_list = assem_instr_->GetInstrList()->GetList();
+  std::list<assem::Instr *> &instr_list =
+      assem_instr_->GetInstrList()->GetList();
 
   // Rewrite
   for (auto it = begin(instr_list); it != end(instr_list); ++it) {
@@ -483,7 +506,7 @@ void RegAllocator::rewrite_program() {
           auto new_instr = new assem::OperInstr(
               ss.str(), new temp::TempList{r},
               new temp::TempList{reg_manager->FramePointer()}, nullptr);
-          instr_list.insert(next(it), new_instr);
+          instr_list.insert(it, new_instr);
           insert_before++;
         }
       }
@@ -511,7 +534,7 @@ void RegAllocator::rewrite_program() {
           auto new_instr = new assem::OperInstr(
               ss.str(), nullptr,
               new temp::TempList{r, reg_manager->FramePointer()}, nullptr);
-          instr_list.insert(it, new_instr);
+          instr_list.insert(next(it), new_instr);
           insert_next++;
         }
       }
@@ -522,6 +545,7 @@ void RegAllocator::rewrite_program() {
 
   spilled_nodes.clear();
   initial = set_union(colored_nodes, coalesced_nodes);
+  initial = set_union(initial, new_temps);
   colored_nodes.clear();
   coalesced_nodes.clear();
 }

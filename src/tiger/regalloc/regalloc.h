@@ -286,6 +286,7 @@ private:
   bool Conservative(const TempNodeSet &nodes) const;
   void combine(TempNode u, TempNode v);
   void freeze_moves(TempNode u);
+  void remove_redundant_moves();
 
   /**
    * @brief Other functions.

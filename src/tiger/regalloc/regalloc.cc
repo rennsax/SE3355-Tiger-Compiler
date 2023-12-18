@@ -179,6 +179,7 @@ void RegAllocator::RegAlloc() {
     RegAlloc();
   } else {
     // End recursive
+    remove_redundant_moves();
     make_result();
   }
 }
@@ -549,7 +550,8 @@ RegAllocator::RegAllocator(frame::Frame *frame,
                            std::unique_ptr<cg::AssemInstr> assem_instr)
     : assem_instr_{std::move(assem_instr)}, frame_{frame}, result_{nullptr} {
 
-  auto instr_list = assem_instr_->GetInstrList()->GetList();
+  std::list<assem::Instr *> &instr_list =
+      assem_instr_->GetInstrList()->GetList();
 
   for (const auto instr : instr_list) {
     temp::TempList def(*instr->Def());
@@ -570,4 +572,23 @@ RegAllocator::RegAllocator(frame::Frame *frame,
     }
   }
 }
+
+void RegAllocator::remove_redundant_moves() {
+  std::list<assem::Instr *> &instr_list =
+      assem_instr_->GetInstrList()->GetList();
+  for (auto it = begin(instr_list); it != end(instr_list); ++it) {
+    auto instr = *it;
+    if (!is_move_instr(instr)) {
+      continue;
+    }
+    auto [x, y] = translate_move_instr(static_cast<assem::MoveInstr *>(instr));
+    auto u = get_alias(x);
+    auto v = get_alias(y);
+    if (u == v) {
+      it = instr_list.erase(it);
+      it--;
+    }
+  }
+}
+
 } // namespace ra

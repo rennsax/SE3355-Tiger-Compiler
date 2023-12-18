@@ -385,8 +385,8 @@ void MoveStm::Munch(assem::InstrList &instr_list, std::string_view fs) {
     if (maybe_const.is_const) {
       std::stringstream ss{};
       ss << "movq $" << maybe_const.u.val << ", `d0";
-      instr_list.Append(
-          new assem::MoveInstr(ss.str(), new temp::TempList{reg_dst}, nullptr));
+      instr_list.Append(new assem::OperInstr(
+          ss.str(), new temp::TempList{reg_dst}, nullptr, nullptr));
     } else {
       instr_list.Append(
           new assem::MoveInstr("movq `s0, `d0", new temp::TempList{reg_dst},
@@ -606,7 +606,7 @@ temp::TempList *ExpList::MunchArgs(assem::InstrList &instr_list,
     if (maybe_const.is_const) {
       std::stringstream ss{};
       ss << "movq $" << maybe_const.u.val << ", `d0";
-      auto instr = new assem::MoveInstr(ss.str(), dst_regs, nullptr);
+      auto instr = new assem::OperInstr(ss.str(), dst_regs, nullptr, nullptr);
       instr_list.Append(instr);
     } else {
       // Get the argument from another register.

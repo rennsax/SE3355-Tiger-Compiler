@@ -109,6 +109,22 @@ void InterfereGraph::add_edge(TempNode u, TempNode v) {
   }
 }
 
+void RegAllocator::add_edge(TempNode u, TempNode v) {
+  if (u == v || is_interfere(u, v)) {
+    return;
+  }
+  adj_set_.insert({u, v});
+  adj_set_.insert({v, u});
+  if (!is_precolored(u)) {
+    adj_list_[u].insert(v);
+    degree_[u]++;
+  }
+  if (!is_precolored(v)) {
+    adj_list_[v].insert(u);
+    degree_[v]++;
+  }
+}
+
 std::size_t InterfereGraph::degree(TempNode v) const {
   if (is_precolored(v) || degree_.count(v) == 0) {
     return std::numeric_limits<std::size_t>::max();
@@ -155,6 +171,7 @@ RegAllocator::extract_temps(assem::Instr *assem) {
 }
 
 bool is_precolored(TempNode n) {
+  // After making the worklist, it's equivalent to `precolored.count(n) == 1`.
   return reg_manager->temp_map_->Look(const_cast<temp::Temp *>(n)) != nullptr;
 }
 
@@ -168,8 +185,7 @@ RegAllocator::translate_move_instr(assem::MoveInstr *instr) {
 TempNode RegAllocator::heuristic_select_spill() const {
   return *std::max_element(begin(spill_worklist), end(spill_worklist),
                            [this](TempNode n1, TempNode n2) -> bool {
-                             return interfere_graph_.degree(n1) <
-                                    interfere_graph_.degree(n2);
+                             return get_degree(n1) < get_degree(n2);
                            });
 }
 
@@ -247,7 +263,7 @@ void RegAllocator::build_interfere_graph() {
     }
     for (const auto temp_def : instr->Def()->GetList()) {
       for (const auto temp_out : live.GetList()) {
-        this->interfere_graph_.add_edge(temp_def, temp_out);
+        add_edge(temp_def, temp_out);
       }
     }
   }
@@ -255,7 +271,7 @@ void RegAllocator::build_interfere_graph() {
 
 void RegAllocator::make_worklist() {
   for (auto temp : initial) {
-    if (interfere_graph_.degree(temp) >= KColors) {
+    if (get_degree(temp) >= KColors) {
       spill_worklist.insert(temp);
     } else if (move_related(temp)) {
       freeze_worklist.insert(temp);
@@ -288,7 +304,7 @@ bool RegAllocator::move_related(TempNode n) const {
 TempNodeSet RegAllocator::adjacent(TempNode n) const {
   // tmp := union select_stack coalesced_nodes
   auto tmp = set_union(selected_stack.get_set(), coalesced_nodes);
-  auto res = set_diff(interfere_graph_.adj_of(n), tmp);
+  auto res = set_diff(get_adj(n), tmp);
   return res;
 }
 
@@ -304,8 +320,8 @@ void RegAllocator::decrement_degree(TempNode m) {
   if (is_precolored(m)) {
     return;
   }
-  auto d = interfere_graph_.degree(m);
-  interfere_graph_.decrease_degree(m);
+  auto d = get_degree(m);
+  set_degree(m, d - 1);
   if (d == KColors) {
     {
       auto to_enable_move = adjacent(m);
@@ -341,26 +357,23 @@ TempNode RegAllocator::get_alias(TempNode n) const {
 }
 
 void RegAllocator::add_worklist(TempNode u) {
-  if (precolored.count(u) == 0 && !move_related(u) &&
-      interfere_graph_.degree(u) < KColors) {
+  if (precolored.count(u) == 0 && !move_related(u) && get_degree(u) < KColors) {
     freeze_worklist.erase(u);
     simplify_worklist.insert(u);
   }
 }
 
 bool RegAllocator::OK(TempNode t, TempNode r) const {
-  return interfere_graph_.degree(t) < KColors || precolored.count(t) ||
-         interfere_graph_.adj_set_contain(t, r);
+  return get_degree(t) < KColors || precolored.count(t) || is_interfere(t, r);
 }
 
 bool RegAllocator::Briggs(TempNode u, TempNode v) const {
-  return Conservative(
-      set_union(interfere_graph_.adj_of(u), interfere_graph_.adj_of(v)));
+  return Conservative(set_union(get_adj(u), get_adj(v)));
 }
 
 bool RegAllocator::Conservative(const TempNodeSet &nodes) const {
   return std::count_if(begin(nodes), end(nodes), [this](TempNode n) -> bool {
-           return interfere_graph_.degree(n) >= KColors;
+           return get_degree(n) >= KColors;
          }) < KColors;
 }
 
@@ -374,12 +387,12 @@ void RegAllocator::combine(TempNode u, TempNode v) {
   alias[v] = u;
   move_list[u] = set_union(move_list.at(u), move_list.at(v));
 
-  for (const auto t : interfere_graph_.adj_of(v)) {
-    interfere_graph_.add_edge(t, u);
+  for (const auto t : get_adj(v)) {
+    add_edge(t, u);
     decrement_degree(t);
   }
 
-  if (interfere_graph_.degree(u) >= KColors && freeze_worklist.count(u)) {
+  if (get_degree(u) >= KColors && freeze_worklist.count(u)) {
     freeze_worklist.erase(u);
     spill_worklist.insert(u);
   }
@@ -399,14 +412,13 @@ void RegAllocator::coalesce() {
     coalesced_moves.insert(instr);
     add_worklist(u);
   } else if (precolored.count(v) /* both are precolored */ ||
-             interfere_graph_.adj_set_contain(u, v) /* interfered MOVE */) {
+             is_interfere(u, v) /* interfered MOVE */) {
     constrained_moves.insert(instr);
     add_worklist(u);
     add_worklist(v);
   } else if (precolored.count(u) &&
                  std::all_of(
-                     begin(interfere_graph_.adj_of(v)),
-                     end(interfere_graph_.adj_of(v)),
+                     begin(get_adj(v)), end(get_adj(v)),
                      [this, u](TempNode t) -> bool { return OK(t, u); }) ||
              !precolored.count(u) && Briggs(u, v)) {
     coalesced_moves.insert(instr);
@@ -449,7 +461,7 @@ void RegAllocator::assign_colors() {
   while (!selected_stack.empty()) {
     auto n = selected_stack.pop();
     auto ok_colors = retrieve_general_registers();
-    for (const auto w : interfere_graph_.adj_of(n)) {
+    for (const auto w : get_adj(n)) {
       auto alias_w = get_alias(w);
       if (colored_nodes.count(alias_w) || precolored.count(alias_w)) {
         ok_colors.erase(color.at(alias_w));
@@ -613,6 +625,32 @@ void RegAllocator::remove_redundant_moves() {
       it--;
     }
   }
+}
+
+std::size_t RegAllocator::get_degree(TempNode n) const {
+  if (degree_.count(n) == 0) {
+    assert(is_precolored(n));
+    return std::numeric_limits<std::size_t>::max();
+  }
+  return degree_.at(n);
+}
+
+void RegAllocator::set_degree(TempNode n, std::size_t d) {
+  assert(!is_precolored(n) && degree_.count(n));
+  degree_[n] = d;
+}
+
+const TempNodeSet &RegAllocator::get_adj(TempNode n) const {
+  const static TempNodeSet empty_set{};
+  if (adj_list_.count(n) == 0) {
+    return empty_set;
+  }
+  return adj_list_.at(n);
+}
+
+bool RegAllocator::is_interfere(TempNode u, TempNode v) const {
+  assert(adj_set_.count({u, v}) == adj_set_.count({v, u}));
+  return adj_set_.count({u, v}) != 0;
 }
 
 } // namespace ra

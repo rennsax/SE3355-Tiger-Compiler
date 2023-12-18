@@ -96,10 +96,9 @@ bool is_precolored(TempNode n);
 /// Whether the instruction is a move instruction.
 bool is_move_instr(assem::Instr *);
 
-class InterfereGraph {
-  // FIXME merge this class into register allocator
+class [[deprecated]] InterfereGraph {
 public:
-  InterfereGraph(TempNodeSet &precolored, TempNodeSet &initial)
+  InterfereGraph(TempNodeSet & precolored, TempNodeSet & initial)
       : precolored{precolored}, initial{initial} {}
 
   [[deprecated]] void add_node(TempNode temp, bool is_precolored = false);
@@ -191,6 +190,7 @@ private:
   struct {
     const TempNodeSet &get_set() const & { return set_; }
     void push(TempNode n) {
+      assert(set_.count(n) == 0);
       set_.insert(n);
       stack_.push(n);
     }
@@ -236,8 +236,68 @@ private:
    *
    */
 
-  /// adjSet, adjList, degree
-  InterfereGraph interfere_graph_{initial, precolored};
+  using NodePair = std::pair<TempNode, TempNode>;
+  struct NodePairHash {
+    std::size_t operator()(const NodePair &pair) const {
+      return pair.first->Int() * 100 + pair.second->Int();
+    }
+  };
+  /**
+   * @brief The set of interference edges (u, v) in the graph.
+   * Tell if u and v are adjacent quickly.
+   *
+   * @note DO NOT access the data structure directly. @sa #is_interfere
+   *
+   * @note (u, v) in adjSet <=> (v, u) in adjSet.
+   */
+  std::unordered_set<NodePair, NodePairHash> adj_set_{};
+  /**
+   * @brief Adjacency list representation of the graph.
+   * Get all the nodes adjacent to node X.
+   *
+   * @note DO NOT access the data structure directly. @sa #get_adj
+   *
+   */
+  TempNodeMap<TempNodeSet> adj_list_{};
+  /**
+   * @brief Current degree of each node.
+   *
+   * @note degree[n] == adjList[n].size isn't satisfied all the time.
+   * @note DO NOT access the data structure directly. @sa #get_degree
+   * #set_degree
+   *
+   */
+  TempNodeMap<std::size_t> degree_{};
+
+  /**
+   * @brief Get the degree of any node. Gracefully handles precolored nodes.
+   *
+   * @param n
+   * @return the degree of n, or infinite if n is precolored.
+   */
+  std::size_t get_degree(TempNode n) const;
+
+  /**
+   * @brief Sets the degree of a given TempNode.
+   *
+   * @param n The TempNode whose degree is to be set. Should not be precolored.
+   * @param d The degree value to be set.
+   */
+  void set_degree(TempNode n, std::size_t d);
+
+  const TempNodeSet &get_adj(TempNode n) const;
+
+  /**
+   * @brief Efficiently checks if two TempNodes interfere with each other.
+   *
+   * This method uses #adj_set_ to query the interference edge.
+   *
+   * @param u The first TempNode.
+   * @param v The second TempNode.
+   * @note The order of (u, v) doesn't matter.
+   * @return True if u and v interfere with each other, false otherwise.
+   */
+  bool is_interfere(TempNode u, TempNode v) const;
 
   /// A mapping from a node to the list of moves it is associated with.
   TempNodeMap<MoveInstrSet> move_list{};
@@ -287,6 +347,8 @@ private:
   void combine(TempNode u, TempNode v);
   void freeze_moves(TempNode u);
   void remove_redundant_moves();
+
+  void add_edge(TempNode u, TempNode v);
 
   /**
    * @brief Other functions.

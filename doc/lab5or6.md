@@ -6,7 +6,7 @@
 - [x] RBP and RSP: replace all occurrence of RBP (frame pointer)
 - [x] Multiplication: `imulp s` implicitly use RAX and RDX, should I backup them?
   - Yes, they are backed up.
-  - [ ] But is it necessary to backup RAX and RDX for `imulp` operation?
+  - [ ] But is it necessary to backup RAX and RDX for `imulp` operation? Would register allocator handle it?
 - [ ] For register allocation: caller-save and callee-save recall. (P244)
 - [x] Rewrite MunchInMemory to generate more complicated memory representations, based on [instruction.py](../scripts/lab5_test/instruction.py).
   - [x] Further more: support `Imm(r1,r2,s)` form.
@@ -27,6 +27,7 @@
 - [ ] Unreasonable: constants should be stored in 64-bit integers. See [tree.h](../src/tiger/translate/tree.h):446. I define a type `frame::Immediate` in [assem.h](../src/tiger/codegen/assem.h).
 - [ ] Inefficient if-then-else translation. See P165 on the textbook. Related function: `tr::makeIfThenElse`.
 - [ ] Optimization: do not store all arguments onto the stack when handling view shift. `X64Frame::X64Frame`. How does X64 handle it with different calling conventions?
+- [ ] Heuristic: is there any improvement?
 
 ### Learn someday
 

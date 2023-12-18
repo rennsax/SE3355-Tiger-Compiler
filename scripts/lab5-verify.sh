@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# This script verify you can still pass lab5 after modifying codegen.cc
+# if you are at the branch lab6.
+# It performs a safe rollback before grading lab5.
+
 set -e
 
 target_rollback='src/tiger/output/output.cc'

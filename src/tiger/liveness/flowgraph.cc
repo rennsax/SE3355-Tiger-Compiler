@@ -14,36 +14,28 @@ template <typename T> T *unwrap_instr(assem::Instr *instr) {
 void FlowGraphFactory::AssemFlowGraph() {
   auto instr_list = this->instr_list_->GetList();
   // Step 1: enter all labels.
-  for (auto instr : this->instr_list_->GetList()) {
+  for (auto instr : instr_list) {
     if (auto label_instr = unwrap_instr<assem::LabelInstr>(instr);
         label_instr) {
       auto fnode = this->flowgraph_->NewNode(instr);
       this->label_map_->Enter(label_instr->label_, fnode);
     }
   }
-
-  // Step 2: find the beginning instruction.
-  // Find the first instruction that is not a label.
   FNode *prev_node = nullptr;
-  auto it = begin(instr_list);
-  while (it != end(instr_list) && unwrap_instr<assem::LabelInstr>(*it)) {
-    ++it;
-  }
-  // Enter the previous one.
-  if (it != end(instr_list)) {
-    prev_node = this->flowgraph_->NewNode(*it);
-    ++it;
-  }
+  for (auto instr : instr_list) {
 
-  // Step 3: add edges.
-  for (; it != end(instr_list); ++it) {
-    auto instr = *it;
-    if (unwrap_instr<assem::LabelInstr>(instr)) {
-      continue;
+    FNode *fnode{};
+    if (auto label_instr = unwrap_instr<assem::LabelInstr>(instr);
+        label_instr) {
+      fnode = this->label_map_->Look(label_instr->label_);
+    } else {
+      fnode = this->flowgraph_->NewNode(instr);
     }
+    assert(fnode);
 
-    auto fnode = this->flowgraph_->NewNode(instr);
-    this->flowgraph_->AddEdge(prev_node, fnode);
+    if (prev_node) {
+      this->flowgraph_->AddEdge(prev_node, fnode);
+    }
     prev_node = fnode;
 
     if (auto oper_instr = unwrap_instr<assem::OperInstr>(instr); oper_instr) {

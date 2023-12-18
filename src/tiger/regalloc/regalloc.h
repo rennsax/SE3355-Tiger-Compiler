@@ -184,6 +184,9 @@ private:
   /// high-degree nodes.
   TempNodeSet spill_worklist{};
   TempNodeSet spilled_nodes{};
+  /// Registers that have been coalesced.
+  /// When u <- v is coalesced, v is put into it and u is put back into some
+  /// worklist.
   TempNodeSet coalesced_nodes{};
   /// Nodes successfully colored.
   TempNodeSet colored_nodes{};
@@ -255,7 +258,7 @@ private:
    * @brief Adjacency list representation of the graph.
    * Get all the nodes adjacent to node X.
    *
-   * @note DO NOT access the data structure directly. @sa #get_adj
+   * @note DO NOT access the data structure directly. @sa #get_adj_of
    *
    */
   TempNodeMap<TempNodeSet> adj_list_{};
@@ -285,7 +288,7 @@ private:
    */
   void set_degree(TempNode n, std::size_t d);
 
-  const TempNodeSet &get_adj(TempNode n) const;
+  const TempNodeSet &get_adj_of(TempNode n) const;
 
   /**
    * @brief Efficiently checks if two TempNodes interfere with each other.

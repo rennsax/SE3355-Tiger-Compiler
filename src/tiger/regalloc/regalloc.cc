@@ -304,7 +304,7 @@ bool RegAllocator::move_related(TempNode n) const {
 TempNodeSet RegAllocator::adjacent(TempNode n) const {
   // tmp := union select_stack coalesced_nodes
   auto tmp = set_union(selected_stack.get_set(), coalesced_nodes);
-  auto res = set_diff(get_adj(n), tmp);
+  auto res = set_diff(get_adj_of(n), tmp);
   return res;
 }
 
@@ -368,7 +368,7 @@ bool RegAllocator::OK(TempNode t, TempNode r) const {
 }
 
 bool RegAllocator::Briggs(TempNode u, TempNode v) const {
-  return Conservative(set_union(get_adj(u), get_adj(v)));
+  return Conservative(set_union(adjacent(u), adjacent(v)));
 }
 
 bool RegAllocator::Conservative(const TempNodeSet &nodes) const {
@@ -387,7 +387,7 @@ void RegAllocator::combine(TempNode u, TempNode v) {
   alias[v] = u;
   move_list[u] = set_union(move_list.at(u), move_list.at(v));
 
-  for (const auto t : get_adj(v)) {
+  for (const auto t : adjacent(v)) {
     add_edge(t, u);
     decrement_degree(t);
   }
@@ -416,10 +416,11 @@ void RegAllocator::coalesce() {
     constrained_moves.insert(instr);
     add_worklist(u);
     add_worklist(v);
-  } else if (precolored.count(u) &&
-                 std::all_of(
-                     begin(get_adj(v)), end(get_adj(v)),
-                     [this, u](TempNode t) -> bool { return OK(t, u); }) ||
+  } else if (auto v_adj = adjacent(v);
+             precolored.count(u) && std::all_of(begin(v_adj), end(v_adj),
+                                                [this, u](TempNode t) -> bool {
+                                                  return OK(t, u);
+                                                }) ||
              !precolored.count(u) && Briggs(u, v)) {
     coalesced_moves.insert(instr);
     combine(u, v);
@@ -461,7 +462,7 @@ void RegAllocator::assign_colors() {
   while (!selected_stack.empty()) {
     auto n = selected_stack.pop();
     auto ok_colors = retrieve_general_registers();
-    for (const auto w : get_adj(n)) {
+    for (const auto w : get_adj_of(n)) {
       auto alias_w = get_alias(w);
       if (colored_nodes.count(alias_w) || precolored.count(alias_w)) {
         ok_colors.erase(color.at(alias_w));
@@ -640,7 +641,7 @@ void RegAllocator::set_degree(TempNode n, std::size_t d) {
   degree_[n] = d;
 }
 
-const TempNodeSet &RegAllocator::get_adj(TempNode n) const {
+const TempNodeSet &RegAllocator::get_adj_of(TempNode n) const {
   const static TempNodeSet empty_set{};
   if (adj_list_.count(n) == 0) {
     return empty_set;

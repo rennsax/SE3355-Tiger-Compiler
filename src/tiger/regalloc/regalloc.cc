@@ -206,9 +206,12 @@ void RegAllocator::RegAlloc() {
       break;
     }
   }
+  assert(simplify_worklist.empty() && worklist_moves.empty() &&
+         freeze_worklist.empty() && spill_worklist.empty());
   assign_colors();
   if (!spilled_nodes.empty()) {
     rewrite_program();
+    clear();
     RegAlloc();
   } else {
     // End recursive
@@ -556,6 +559,7 @@ void RegAllocator::rewrite_program() {
     advance(it, insert_next);
   }
 
+  // All spilled nodes are cleared now.
   spilled_nodes.clear();
   initial = set_union(colored_nodes, coalesced_nodes);
   initial = set_union(initial, new_temps);
@@ -587,6 +591,8 @@ RegAllocator::RegAllocator(frame::Frame *frame,
                            std::unique_ptr<cg::AssemInstr> assem_instr)
     : assem_instr_{std::move(assem_instr)}, frame_{frame}, result_{nullptr} {
 
+  // initial, precolored and color are initialized.
+
   std::list<assem::Instr *> &instr_list =
       assem_instr_->GetInstrList()->GetList();
 
@@ -608,6 +614,8 @@ RegAllocator::RegAllocator(frame::Frame *frame,
       }
     }
   }
+
+  initial_color = color;
 }
 
 void RegAllocator::remove_redundant_moves() {
@@ -619,9 +627,9 @@ void RegAllocator::remove_redundant_moves() {
       continue;
     }
     auto [x, y] = translate_move_instr(static_cast<assem::MoveInstr *>(instr));
-    auto u = get_alias(x);
-    auto v = get_alias(y);
-    if (u == v) {
+    auto x_color = color.at(get_alias(x));
+    auto y_color = color.at(get_alias(y));
+    if (x_color == y_color) {
       it = instr_list.erase(it);
       it--;
     }
@@ -652,6 +660,21 @@ const TempNodeSet &RegAllocator::get_adj_of(TempNode n) const {
 bool RegAllocator::is_interfere(TempNode u, TempNode v) const {
   assert(adj_set_.count({u, v}) == adj_set_.count({v, u}));
   return adj_set_.count({u, v}) != 0;
+}
+
+void RegAllocator::clear() {
+  coalesced_moves.clear();
+  constrained_moves.clear();
+  frozen_moves.clear();
+  active_moves.clear();
+
+  adj_set_.clear();
+  adj_list_.clear();
+  degree_.clear();
+
+  move_list.clear();
+  alias.clear();
+  color = initial_color;
 }
 
 } // namespace ra

@@ -310,6 +310,7 @@ private:
   /// The color assigned to a node. For precolored nodes this is initialized at
   /// the very beginning.
   ColorMap color{};
+  ColorMap initial_color{};
 
   // Final result.
   std::unique_ptr<ra::Result> result_{};
@@ -328,6 +329,7 @@ private:
   void select_spill();
   void assign_colors();
   void rewrite_program();
+  void clear();
   void make_result();
 
   /**

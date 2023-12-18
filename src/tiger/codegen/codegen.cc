@@ -553,10 +553,9 @@ temp::Temp *ConstExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
 temp::Temp *CallExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
   assert(typeid(*this->fun_) == typeid(tree::NameExp));
 
-  auto r = temp::TempFactory::NewTemp();
-  auto rv = reg_manager->ReturnValue();
   auto args = this->args_->MunchArgs(instr_list, fs);
-  auto call_dst = new temp::TempList{rv};
+  // `call` instruction defines (or kills) all caller-saved registers.
+  auto call_dst = new temp::TempList{};
   call_dst->Concat(reg_manager->CallerSaves());
 
   auto instr_str =
@@ -578,6 +577,8 @@ temp::Temp *CallExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
                                            new temp::TempList{rsp}, nullptr));
   }
 
+  auto r = temp::TempFactory::NewTemp();
+  auto rv = reg_manager->ReturnValue();
   // The responsibility to move the result to a fresh register.
   instr_list.Append(new assem::MoveInstr("movq `s0, `d0", new temp::TempList{r},
                                          new temp::TempList{rv}));

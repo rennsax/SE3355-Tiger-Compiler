@@ -259,7 +259,7 @@ auto MemExp::MunchInMemory(assem::InstrList &instr_list, std::string_view fs)
      *      TEMP
      */
     auto temp_exp = static_cast<tree::TempExp *>(this->exp_);
-    return {std::string{"`s0"}, new temp::TempList{temp_exp->temp_}};
+    return {std::string{"(`s0)"}, new temp::TempList{temp_exp->temp_}};
   }
   // In Tiger, no other cases.
   assert(0);

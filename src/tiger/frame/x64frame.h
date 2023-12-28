@@ -46,52 +46,63 @@ public:
 
 #define REGISTER(sym) (regs_.at(static_cast<std::size_t>(Register::sym)))
   temp::TempList *Registers() override {
-    auto res = new temp::TempList{};
-    for (int i = 0; i < static_cast<std::size_t>(Register::COUNT) - 2; ++i) {
-      res->Append(regs_.at(i));
+    static temp::TempList *general_purpose_regs = nullptr;
+    if (!general_purpose_regs) {
+      general_purpose_regs = new temp::TempList{};
+      for (int i = 0; i < static_cast<std::size_t>(Register::COUNT); ++i) {
+        general_purpose_regs->Append(regs_.at(i));
+      }
     }
-    return res;
+    return general_purpose_regs;
   }
   temp::TempList *ArgRegs() override {
-    auto res = new temp::TempList{};
-    res->Append(REGISTER(RDI));
-    res->Append(REGISTER(RSI));
-    res->Append(REGISTER(RDX));
-    res->Append(REGISTER(RCX));
-    res->Append(REGISTER(R8));
-    res->Append(REGISTER(R9));
-    return res;
+    static temp::TempList *arg_regs = nullptr;
+    if (!arg_regs) {
+      arg_regs = new temp::TempList{};
+      arg_regs->Append(REGISTER(RDI));
+      arg_regs->Append(REGISTER(RSI));
+      arg_regs->Append(REGISTER(RDX));
+      arg_regs->Append(REGISTER(RCX));
+      arg_regs->Append(REGISTER(R8));
+      arg_regs->Append(REGISTER(R9));
+    }
+    return arg_regs;
   }
   temp::TempList *CallerSaves() override {
-    auto res = new temp::TempList{};
-    res->Append(REGISTER(RAX));
-    res->Append(REGISTER(RDI));
-    res->Append(REGISTER(RSI));
-    res->Append(REGISTER(RDX));
-    res->Append(REGISTER(RCX));
-    res->Append(REGISTER(R8));
-    res->Append(REGISTER(R9));
-    res->Append(REGISTER(R10));
-    res->Append(REGISTER(R11));
-    return res;
+    static temp::TempList *call_clobbered = nullptr;
+    if (!call_clobbered) {
+      call_clobbered = new temp::TempList{};
+      call_clobbered->Append(REGISTER(RAX));
+      call_clobbered->Append(REGISTER(RDI));
+      call_clobbered->Append(REGISTER(RSI));
+      call_clobbered->Append(REGISTER(RDX));
+      call_clobbered->Append(REGISTER(RCX));
+      call_clobbered->Append(REGISTER(R8));
+      call_clobbered->Append(REGISTER(R9));
+      call_clobbered->Append(REGISTER(R10));
+      call_clobbered->Append(REGISTER(R11));
+    }
+    return call_clobbered;
   }
   temp::TempList *CalleeSaves() override {
-    auto res = new temp::TempList{};
-    res->Append(REGISTER(RBP));
-    res->Append(REGISTER(RBX));
-    res->Append(REGISTER(R12));
-    res->Append(REGISTER(R13));
-    res->Append(REGISTER(R14));
-    res->Append(REGISTER(R15));
-    return res;
+    static temp::TempList *call_preserved = nullptr;
+    if (!call_preserved) {
+      call_preserved = new temp::TempList{};
+      call_preserved->Append(REGISTER(RSP));
+      call_preserved->Append(REGISTER(RBP));
+      call_preserved->Append(REGISTER(RBX));
+      call_preserved->Append(REGISTER(R12));
+      call_preserved->Append(REGISTER(R13));
+      call_preserved->Append(REGISTER(R14));
+      call_preserved->Append(REGISTER(R15));
+    }
+    return call_preserved;
   }
   temp::TempList *ReturnSink() override {
     static temp::TempList *returnSink = nullptr;
     if (!returnSink) {
       auto callee_savers = this->CalleeSaves();
       returnSink = new temp::TempList(*callee_savers);
-      returnSink =
-          new temp::TempList{this->ReturnValue(), this->StackPointer()};
     }
     return returnSink;
   }

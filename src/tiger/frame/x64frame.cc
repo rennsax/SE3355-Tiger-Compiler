@@ -169,6 +169,7 @@ void X64Frame::procEntryExit2(assem::InstrList &body) const {
       to_remove.push_back(cur_instr);
     }
   }
+#ifndef NDEBUG
   printf("--------------------------------\n[ProcEntryExit2] eliminate "
          "following instructions\n");
   for (auto instr : to_remove) {
@@ -176,6 +177,7 @@ void X64Frame::procEntryExit2(assem::InstrList &body) const {
     body.Remove(instr);
   }
   printf("--------------------------------\n");
+#endif
 
   // QUESTION why not define them in `ret` statement?
   body.Append(

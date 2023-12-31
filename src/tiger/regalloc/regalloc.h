@@ -66,6 +66,8 @@ struct TempHash {
 template <typename T, typename Cmp>
 std::set<T, Cmp> set_union(const std::set<T, Cmp> &lhs,
                            const std::set<T, Cmp> &rhs) {
+  assert(std::is_sorted(begin(lhs), end(lhs), Cmp{}));
+  assert(std::is_sorted(begin(rhs), end(rhs), Cmp{}));
   std::set<T, Cmp> res{};
   std::set_union(lhs.begin(), lhs.end(), rhs.begin(), rhs.end(),
                  std::inserter(res, res.begin()), Cmp{});
@@ -75,6 +77,8 @@ std::set<T, Cmp> set_union(const std::set<T, Cmp> &lhs,
 template <typename T, typename Cmp>
 std::set<T, Cmp> set_diff(const std::set<T, Cmp> &lhs,
                           const std::set<T, Cmp> &rhs) {
+  assert(std::is_sorted(begin(lhs), end(lhs), Cmp{}));
+  assert(std::is_sorted(begin(rhs), end(rhs), Cmp{}));
   std::set<T, Cmp> res{};
   std::set_difference(lhs.begin(), lhs.end(), rhs.begin(), rhs.end(),
                       std::inserter(res, res.begin()), Cmp{});
@@ -84,6 +88,8 @@ std::set<T, Cmp> set_diff(const std::set<T, Cmp> &lhs,
 template <typename T, typename Cmp>
 std::set<T, Cmp> set_intersect(const std::set<T, Cmp> &lhs,
                                const std::set<T, Cmp> &rhs) {
+  assert(std::is_sorted(begin(lhs), end(lhs), Cmp{}));
+  assert(std::is_sorted(begin(rhs), end(rhs), Cmp{}));
   std::set<T, Cmp> res{};
   std::set_intersection(lhs.begin(), lhs.end(), rhs.begin(), rhs.end(),
                         std::inserter(res, res.begin()), Cmp{});

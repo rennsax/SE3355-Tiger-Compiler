@@ -90,9 +90,6 @@ std::set<T, Cmp> set_intersect(const std::set<T, Cmp> &lhs,
   return res;
 }
 
-/// Whether the register is a machine register ().
-bool is_precolored(TempNode n);
-
 /// Whether the instruction is a move instruction.
 bool is_move_instr(assem::Instr *);
 
@@ -331,6 +328,9 @@ private:
   static TempNodeSet retrieve_general_registers();
 
   static frame::Immediate drag_offset(frame::Access *access);
+
+  /// Whether the register is a machine register ().
+  bool is_precolored(TempNode n) const;
 };
 
 } // namespace ra

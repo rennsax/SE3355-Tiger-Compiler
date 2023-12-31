@@ -90,11 +90,6 @@ bool is_move_instr(assem::Instr *instr) {
   return typeid(*instr) == typeid(assem::MoveInstr);
 }
 
-bool is_precolored(TempNode n) {
-  // After making the worklist, it's equivalent to `precolored.count(n) == 1`.
-  return reg_manager->temp_map_->Look(const_cast<temp::Temp *>(n)) != nullptr;
-}
-
 std::pair<TempNode, TempNode>
 RegAllocator::translate_move_instr(assem::MoveInstr *instr) {
   TempNode n1 = instr->src_->GetList().front();
@@ -280,14 +275,14 @@ TempNode RegAllocator::get_alias(TempNode n) const {
 }
 
 void RegAllocator::add_worklist(TempNode u) {
-  if (precolored.count(u) == 0 && !move_related(u) && get_degree(u) < KColors) {
+  if (is_precolored(u) == 0 && !move_related(u) && get_degree(u) < KColors) {
     freeze_worklist.erase(u);
     simplify_worklist.insert(u);
   }
 }
 
 bool RegAllocator::OK(TempNode t, TempNode r) const {
-  return get_degree(t) < KColors || precolored.count(t) || is_interfere(t, r);
+  return get_degree(t) < KColors || is_precolored(t) || is_interfere(t, r);
 }
 
 bool RegAllocator::Briggs(TempNode u, TempNode v) const {
@@ -326,7 +321,7 @@ void RegAllocator::coalesce() {
   auto [x, y] = translate_move_instr(instr);
   auto u = get_alias(x);
   auto v = get_alias(y);
-  if (precolored.count(v)) {
+  if (is_precolored(v)) {
     std::swap(u, v);
   }
   worklist_moves.erase(begin(worklist_moves));
@@ -334,17 +329,17 @@ void RegAllocator::coalesce() {
   if (u == v) {
     coalesced_moves.insert(instr);
     add_worklist(u);
-  } else if (precolored.count(v) /* both are precolored */ ||
+  } else if (is_precolored(v) /* both are precolored */ ||
              is_interfere(u, v) /* interfered MOVE */) {
     constrained_moves.insert(instr);
     add_worklist(u);
     add_worklist(v);
   } else if (auto v_adj = adjacent(v);
-             precolored.count(u) && std::all_of(begin(v_adj), end(v_adj),
-                                                [this, u](TempNode t) -> bool {
-                                                  return OK(t, u);
-                                                }) ||
-             !precolored.count(u) && Briggs(u, v)) {
+             is_precolored(u) && std::all_of(begin(v_adj), end(v_adj),
+                                             [this, u](TempNode t) -> bool {
+                                               return OK(t, u);
+                                             }) ||
+             !is_precolored(u) && Briggs(u, v)) {
     coalesced_moves.insert(instr);
     combine(u, v);
     add_worklist(u);
@@ -391,7 +386,7 @@ void RegAllocator::assign_colors() {
     auto ok_colors = retrieve_general_registers();
     for (const auto w : get_adj_of(n)) {
       auto alias_w = get_alias(w);
-      if (colored_nodes.count(alias_w) || precolored.count(alias_w)) {
+      if (colored_nodes.count(alias_w) || is_precolored(alias_w)) {
         ok_colors.erase(color.at(alias_w));
       }
     }
@@ -527,10 +522,11 @@ RegAllocator::RegAllocator(frame::Frame *frame,
     use.sort();
     auto all_temps = temp::temp_union(def, use);
     for (const auto temp : all_temps.GetList()) {
-      if (precolored.count(temp) || initial.count(temp)) {
+      if (is_precolored(temp) || initial.count(temp)) {
         continue;
       }
-      if (is_precolored(temp)) {
+      if (reg_manager->temp_map_->Look(const_cast<temp::Temp *>(temp)) !=
+          nullptr) {
         INSERT_WITH_CHECK(precolored, temp);
         color[temp] = temp;
       } else {
@@ -599,6 +595,12 @@ void RegAllocator::clear() {
   move_list.clear();
   alias.clear();
   color = initial_color;
+}
+
+bool RegAllocator::is_precolored(TempNode n) const {
+  // After making the worklist, it's equivalent to
+  // `reg_manager->temp_map_->Look(const_cast<temp::Temp *>(temp)) != nullptr`.
+  return precolored.count(n) == 1;
 }
 
 } // namespace ra

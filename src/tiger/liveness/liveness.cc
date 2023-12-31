@@ -60,8 +60,6 @@ void LiveGraphFactory::LiveMap() {
   } while (has_change);
 }
 
-void LiveGraphFactory::InterfGraph() { assert(0); }
-
 temp::TempList *
 LiveGraphFactory::get_out_(graph::Node<assem::Instr> *node) const noexcept {
   auto res = this->out_->Look(node);

@@ -72,7 +72,6 @@ private:
   std::unique_ptr<graph::Table<assem::Instr, temp::TempList>> out_;
 
   void LiveMap();
-  [[deprecated]] void InterfGraph();
 
   temp::TempList *get_out_(graph::Node<assem::Instr> *node) const noexcept;
   temp::TempList *get_in_(graph::Node<assem::Instr> *node) const noexcept;

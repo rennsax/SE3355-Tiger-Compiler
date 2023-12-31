@@ -70,45 +70,6 @@ TempNodeSet from_temp_list(temp::TempList const *temp_list) {
   return res;
 }
 
-std::size_t
-InterfereGraph::hash_temp_pair_(const BitMap_Underlying &temp_pair) {
-  auto [u, v] = temp_pair;
-  std::stringstream ss{};
-  ss << u->Int() << v->Int();
-  return std::hash<std::string>{}(ss.str());
-}
-
-[[deprecated]] void InterfereGraph::add_node(TempNode temp,
-                                             bool is_precolored) {
-  if (precolored.count(temp) || initial.count(temp)) {
-    return;
-  }
-  if (is_precolored) {
-    precolored.insert(temp);
-  } else {
-    initial.insert(temp);
-    // FIXME necessary?
-    adjList_.emplace(std::make_pair(temp, TempNodeSet{}));
-    degree_.emplace(std::make_pair(temp, 0));
-  }
-}
-
-void InterfereGraph::add_edge(TempNode u, TempNode v) {
-  if (u != v && adjSet_.count(std::make_pair(u, v))) {
-    return;
-  }
-  adjSet_.insert(std::make_pair(u, v));
-  adjSet_.insert(std::make_pair(v, u));
-  if (!is_precolored(u)) {
-    adjList_[u].insert(v);
-    degree_[u]++;
-  }
-  if (!is_precolored(v)) {
-    adjList_[v].insert(u);
-    degree_[v]++;
-  }
-}
-
 void RegAllocator::add_edge(TempNode u, TempNode v) {
   if (u == v || is_interfere(u, v)) {
     return;
@@ -125,49 +86,8 @@ void RegAllocator::add_edge(TempNode u, TempNode v) {
   }
 }
 
-std::size_t InterfereGraph::degree(TempNode v) const {
-  if (is_precolored(v) || degree_.count(v) == 0) {
-    return std::numeric_limits<std::size_t>::max();
-  }
-  return degree_.at(v);
-}
-
-auto InterfereGraph::adj_of(TempNode v) const -> const TempNodeSet & {
-  // Fallback for an empty adj set.
-  static TempNodeSet empty_set{};
-  if (adjList_.count(v) == 0) {
-    return empty_set;
-  }
-  return adjList_.at(v);
-}
-
-bool InterfereGraph::adj_set_contain(TempNode u, TempNode v) const {
-  return adjSet_.count({u, v}) == 1;
-}
-
-void InterfereGraph::decrease_degree(TempNode v) {
-  assert(degree_.count(v));
-  degree_[v]--;
-}
-
 bool is_move_instr(assem::Instr *instr) {
   return typeid(*instr) == typeid(assem::MoveInstr);
-}
-
-[[deprecated]] std::vector<std::tuple<TempNode, bool>>
-RegAllocator::extract_temps(assem::Instr *assem) {
-  std::vector<std::tuple<TempNode, bool>> res{};
-
-  auto move_instr = static_cast<assem::MoveInstr *>(assem);
-  auto dst = move_instr->Def()->GetList();
-  auto src = move_instr->Use()->GetList();
-  for (const auto temp : dst) {
-    res.emplace_back(temp, is_precolored(temp));
-  }
-  for (const auto temp : src) {
-    res.emplace_back(temp, is_precolored(temp));
-  }
-  return res;
 }
 
 bool is_precolored(TempNode n) {

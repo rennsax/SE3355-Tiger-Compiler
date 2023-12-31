@@ -96,53 +96,6 @@ bool is_precolored(TempNode n);
 /// Whether the instruction is a move instruction.
 bool is_move_instr(assem::Instr *);
 
-class [[deprecated]] InterfereGraph {
-public:
-  InterfereGraph(TempNodeSet & precolored, TempNodeSet & initial)
-      : precolored{precolored}, initial{initial} {}
-
-  [[deprecated]] void add_node(TempNode temp, bool is_precolored = false);
-  void add_edge(TempNode u, TempNode v);
-  std::size_t degree(TempNode v) const;
-  void decrease_degree(TempNode v);
-  const TempNodeSet &adj_of(TempNode v) const;
-  bool adj_set_contain(TempNode u, TempNode v) const;
-
-private:
-  using BitMap_Underlying = std::pair<TempNode, TempNode>;
-
-  static std::size_t hash_temp_pair_(const BitMap_Underlying &temp_pair);
-
-  /**
-   * @brief The set of interference edges (u, v) in the graph.
-   * Tell if u and v are adjacent quickly.
-   *
-   * @note (u, v) in adjSet <=> (v, u) in adjSet.
-   */
-  std::unordered_set<BitMap_Underlying,
-                     decltype(&InterfereGraph::hash_temp_pair_)>
-      adjSet_{0, &InterfereGraph::hash_temp_pair_};
-  /**
-   * @brief Adjacency list representation of the graph.
-   * Get all the nodes adjacent to node X.
-   *
-   */
-  TempNodeMap<TempNodeSet> adjList_{};
-
-  /**
-   * @brief Current degree of each node.
-   *
-   * @note degree[n] == adjList[n].size isn't satisfied all the time.
-   *
-   */
-  TempNodeMap<std::size_t> degree_{};
-
-  /// Machine registers, preassigned a color.
-  TempNodeSet &precolored;
-  /// Temporary registers, neither precolored nor processed.
-  TempNodeSet &initial;
-};
-
 class RegAllocator {
 
 public:
@@ -359,15 +312,6 @@ private:
    * @brief Other functions.
    *
    */
-
-  /**
-   * @brief Extract temps from the instruction.
-   *
-   * @return std::vector<std::tuple<TempNode, bool>> A list of temporaries. The
-   * second value indicates whether the temporary register is precolored.
-   */
-  [[deprecated]] static std::vector<std::tuple<TempNode, bool>>
-  extract_temps(assem::Instr *);
 
   /**
    * Translates a MoveInstr into a pair of TempNodes.

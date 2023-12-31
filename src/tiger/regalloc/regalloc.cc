@@ -86,10 +86,6 @@ void RegAllocator::add_edge(TempNode u, TempNode v) {
   }
 }
 
-bool is_move_instr(assem::Instr *instr) {
-  return typeid(*instr) == typeid(assem::MoveInstr);
-}
-
 std::pair<TempNode, TempNode>
 RegAllocator::translate_move_instr(assem::MoveInstr *instr) {
   TempNode n1 = instr->src_->GetList().front();
@@ -601,6 +597,10 @@ bool RegAllocator::is_precolored(TempNode n) const {
   // After making the worklist, it's equivalent to
   // `reg_manager->temp_map_->Look(const_cast<temp::Temp *>(temp)) != nullptr`.
   return precolored.count(n) == 1;
+}
+
+bool RegAllocator::is_move_instr(assem::Instr *instr) {
+  return typeid(*instr) == typeid(assem::MoveInstr);
 }
 
 } // namespace ra

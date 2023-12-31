@@ -96,9 +96,6 @@ std::set<T, Cmp> set_intersect(const std::set<T, Cmp> &lhs,
   return res;
 }
 
-/// Whether the instruction is a move instruction.
-bool is_move_instr(assem::Instr *);
-
 class RegAllocator {
 
 public:
@@ -334,6 +331,9 @@ private:
   static TempNodeSet retrieve_general_registers();
 
   static frame::Immediate drag_offset(frame::Access *access);
+
+  /// Whether the instruction is a move instruction.
+  static bool is_move_instr(assem::Instr *);
 
   /// Whether the register is a machine register ().
   bool is_precolored(TempNode n) const;

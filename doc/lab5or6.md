@@ -6,8 +6,9 @@
 - [x] RBP and RSP: replace all occurrence of RBP (frame pointer)
 - [x] Multiplication: `imulp s` implicitly use RAX and RDX, should I backup them?
   - Yes, they are backed up.
-  - [ ] But is it necessary to backup RAX and RDX for `imulp` operation? Would register allocator handle it?
-- [ ] For register allocation: caller-save and callee-save recall. (P244)
+  - [x] But is it necessary to backup RAX and RDX for `imulp` operation? Would register allocator handle it?
+    - Register allocator doesn't handle it. So backup is necessary.
+- [x] For register allocation: caller-save and callee-save recall. (P244)
 - [x] Rewrite MunchInMemory to generate more complicated memory representations, based on [instruction.py](../scripts/lab5_test/instruction.py).
   - [x] Further more: support `Imm(r1,r2,s)` form.
     Unused. See
@@ -18,7 +19,7 @@
 
 ### Perplexed
 
-- [ ] Will register allocation affect frame size? Should `procEntryExit3` handle it? If the frame size is expected to be increased, how to modify it?
+- [x] Will register allocation affect frame size? Should `procEntryExit3` handle it? If the frame size is expected to be increased, how to modify it?
 
 ### Optional
 

@@ -1,5 +1,19 @@
 # Tiger Compiler Labs in C++
 
+Implementation of Tiger compiler with C++, for SE course SE3355.
+
+My code is well-documented and many commit message contains useful information. See the `doc` folder for more documentations.
+
+Some suggestions (with heart!! ❤️):
+
+- This project is really, really difficult, especially when it comes to lab5 and lab6. In lab5 and lab6, you almost get nothing with the skeleton. And the workload is tremendously increased compared with lab1-lab4 (I'd say, frankly, lab5 >> 1ab1-lab4). Therefore, spare yourself enough time.
+- I like reading the textbook. So I'd like to suggest you reading the textbook/slides carefully when working with lab5 and lab6. It could be worthwhile even though you spend a whole day to understand how to deal with the interfaces.
+- Try you best to hand in the lab in time!!!
+  > Because of the difficulty, the teacher says on the class: _Delay is tolerable_, and don't be so nervous. That's where the tragedy begins as I am convinced by him and go to sleep, complete my lab5 with **1-day** delay (The TA only admits your completion after you pass **all** the test cases). The outcome is that I get -3.6 in my final score! That's really a "intolerable" punishment! I'm full of regret now 😭.
+- Keep on discussion with your classmates. Don't be shy. Under the catastrophe, there's no time to waste.
+
+> Original doc below.
+
 ## Contents
 
 - [Tiger Compiler Labs in C++](#tiger-compiler-labs-in-c)
